@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261022';
+import { api } from './firebase.js?v=20261103';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -8,7 +8,7 @@ const app = $('#app');
 
 // Listas da planilha original
 const STATUS = ['ENCAMINHADO', 'TENT CONTATO', 'AGENDADO', 'FECHADO'];
-const ENCAMINHADO_PARA = ['GARANTIA', 'GLOBAL', 'LOGISTICA', 'QUALITY INFRA', 'SOFTPLAN', 'STI', 'REMOTO', 'REVOKE', 'VOLANTE', 'CTIS'];
+const ENCAMINHADO_PARA = ['GARANTIA', 'GLOBAL', 'LOGISTICA', 'QUALITY INFRA', 'SOFTPLAN', 'STI', 'REMOTO', 'REVOKE', 'VOLANTE', 'CTIS', 'VALID'];
 const HOME_LOCAL = ['HOME', 'LOCAL'];
 // DEVOLVIDO: o setor devolveu o chamado e ele foi reaberto em uma nova "ida" (registro novo com o mesmo SMAX)
 const MOTIVOS_DEVOLUCAO = ['Faltou informação', 'Fora do escopo do setor', 'Resolvido em parte', 'Precisa de atendimento local'];
@@ -186,7 +186,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261022';
+const VERSAO = '20261103';
 let versaoNova = null;
 async function conferirVersao() {
   try {
