@@ -325,3 +325,8 @@ fieldset.devol.agend legend{color:var(--st-ag)}
 .tab-dev tr.dev-det li:last-child{border-bottom:0}
 .tab-dev tr.dev-det li:hover b{text-decoration:underline}
 .tab-dev .mono{font-family:ui-monospace,Consolas,monospace}
+
+/* logo clicável: volta para a tela principal */
+a.brandmark{text-decoration:none;cursor:pointer;border-radius:8px}
+a.brandmark:hover span{text-decoration:underline;text-underline-offset:3px}
+a.brandmark:focus-visible{outline:2px solid rgba(255,255,255,.7);outline-offset:3px}

@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261111';
+import { api } from './firebase.js?v=20261111b';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -186,7 +186,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261111';
+const VERSAO = '20261111b';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -393,7 +393,7 @@ function layout(r) {
   const atual = tabs.some(x => x[0] === r) ? r : 'atendimentos';
   app.innerHTML = `
   <header class="top ${campanhaAtual().claro ? 'claro' : ''}" style="--top:${campanhaAtual().cor}"><div class="top-in">
-    <div class="brandmark"><i></i><span>Atendimento Field</span></div>
+    <a class="brandmark" href="#/atendimentos" id="logoInicio" title="Ir para a tela principal"><i></i><span>Atendimento Field</span></a>
     ${seloCampanha()}
     <nav class="tabs">${tabs.map(([k, t]) => `<a href="#/${k}" class="${atual === k ? 'on' : ''}">${t}</a>`).join('')}</nav>
     <div class="me">
@@ -409,6 +409,8 @@ function layout(r) {
   $('#meBtn').onclick = e => { e.stopPropagation(); $('#meMenu').classList.toggle('open'); };
   document.onclick = () => $('#meMenu') && $('#meMenu').classList.remove('open');
   ligarCampanha($('header.top'));
+  // logo: volta para a tela principal (se já estiver nela, recarrega a lista)
+  $('#logoInicio').onclick = e => { if (rota() === 'atendimentos') { e.preventDefault(); scrollTo(0, 0); render(); } };
   $('#mSair').onclick = () => api.sair();
   $('#mSenha').onclick = trocarSenha;
 }
