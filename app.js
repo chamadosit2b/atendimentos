@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261111b';
+import { api } from './firebase.js?v=20261111c';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -186,7 +186,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261111b';
+const VERSAO = '20261111c';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -217,6 +217,29 @@ function avisoVersao() {
 // tira o ?v=... do endereço depois que carregou (fica mais limpo)
 if (new URL(location.href).searchParams.has('v')) { const u = new URL(location.href); u.searchParams.delete('v'); history.replaceState(null, '', u.toString()); }
 
+// --------------------------------------------------------------- cache dos chamados do mês
+// A 1ª vez (e no ↻ Atualizar) lê o mês inteiro. Depois, o automático só busca o que foi alterado
+// desde a última busca. Isso economiza as leituras do plano grátis do Firebase (50 mil por dia).
+const MARGEM_RELOGIO = 10 * 60 * 1000;   // folga para diferença de relógio entre o computador e o servidor
+S.cache = { mes: null, docs: null, quando: 0 };
+const doMes = (d, mes) => d.mes === mes || (Array.isArray(d.meses) && d.meses.includes(mes));
+async function docsDoMes(mes, completo) {
+  const c = S.cache;
+  if (completo || c.mes !== mes || !c.docs) {
+    const inicio = Date.now();
+    const l = await api.listarAtendimentos({ mes });
+    S.cache = { mes, docs: new Map(l.map(d => [d.id, d])), quando: inicio };
+    return l;
+  }
+  const inicio = Date.now();
+  const alt = await api.listarAlteradosDesde(new Date(c.quando - MARGEM_RELOGIO));
+  alt.forEach(d => { if (doMes(d, mes)) c.docs.set(d.id, d); else c.docs.delete(d.id); });
+  c.quando = inicio;
+  return [...c.docs.values()];
+}
+const doTecnico = (l, uid) => uid ? l.filter(x => x.uid === uid || (Array.isArray(x.uids) && x.uids.includes(uid))) : l;
+function esquecerNoCache(id) { if (S.cache.docs) S.cache.docs.delete(id); }
+
 // --------------------------------------------------------------- botão ↻ Atualizar
 // Dados: atualiza sozinho a cada 2 minutos e quando a aba volta a ficar visível (se nenhum formulário estiver aberto).
 // Clique no botão: atualiza os dados e confere se saiu versão nova do sistema (equivale ao Ctrl+F5).
@@ -242,8 +265,8 @@ async function atualizarTela(manual) {
       try { S.usuarios = await api.listarUsuarios(); } catch {}
     }
     const y = scrollY, main = $('main');
-    if (r === 'atendimentos' && S.recarregar) await S.recarregar();
-    else if (r === 'painel') { if (manual || await mudou('painel')) await telaPainel(main); }
+    if (r === 'atendimentos' && S.recarregar) await S.recarregar(manual);
+    else if (r === 'painel') { if (manual) { await docsDoMes(S.mes, true); await telaPainel(main); } else if (await mudou('painel')) await telaPainel(main); }
     else if (r === 'agenda') { if (manual || await mudou('agenda')) await telaAgenda(main); }
     scrollTo(0, y); ligarAtu(); marcarHora();
     if (manual) toast('Informações atualizadas.');
@@ -253,7 +276,7 @@ async function atualizarTela(manual) {
 // no automático, só redesenha o Painel/Agenda se algo mudou (evita a tela piscar à toa)
 async function mudou(tela) {
   try {
-    const l = tela === 'painel' ? await api.listarAtendimentos({ mes: S.mes }) : await api.listarAgendados({ uid: isAdmin() ? null : S.perfil.id });
+    const l = tela === 'painel' ? await docsDoMes(S.mes) : await api.listarAgendados({ uid: isAdmin() ? null : S.perfil.id });
     const ass = assinatura(l), k = 'assin_' + tela, antes = S[k]; S[k] = ass; return antes !== ass;
   } catch { return false; }
 }
@@ -489,8 +512,8 @@ async function telaAtendimentos(main) {
   $('#fTec').onchange = e => { S.filtros.tecnico = e.target.value; carregar(); };
 
   let base = [];
-  async function carregar() {
-    try { base = ordenar(await api.listarAtendimentos({ mes: S.mes, uid: S.filtros.tecnico || null })); }
+  async function carregar(completo) {
+    try { base = ordenar(doTecnico(await docsDoMes(S.mes, completo), S.filtros.tecnico || null)); }
     catch (e) { toast(e.message, true); base = []; }
     S.comarcas = [...new Set([...(S.comarcas || []), ...base.map(a => a.comarca).filter(Boolean)])];
     mostrar();
@@ -553,7 +576,7 @@ function cadeiasAntigas(todos) {
 }
 async function avisoFormatoAntigo() {
   if (S.migrVisto) return; S.migrVisto = true;
-  let todos; try { todos = await api.listarTodosAtendimentos(); } catch { return; }
+  let todos; try { if (!(await api.temFormatoAntigo())) return; todos = await api.listarTodosAtendimentos(); } catch { return; }
   const cad = cadeiasAntigas(todos); const el = $('#migr'); if (!cad.length || !el) return;
   el.innerHTML = `<div class="aviso-migr"><div><b>${cad.length} chamado(s) reaberto(s) ainda estão no formato antigo</b> (uma linha por ida): ${cad.slice(0, 6).map(c => esc(c[0].smax)).join(', ')}${cad.length > 6 ? '…' : ''}.<br><span class="hint">Juntar deixa cada um como um chamado só, com as idas dentro. Horários, técnicos e histórico são mantidos.</span></div>
     <button class="btn primary sm" id="btnMigr">Juntar agora</button></div>`;
@@ -578,7 +601,7 @@ async function juntarCadeia(cad) {
   novo.meses = mesesDe(idas, novo); novo.uids = uidsDe(idas, novo);
   if (cad[0].criado_em) novo.criado_em = cad[0].criado_em;
   await api.substituirAtendimento(cad[0].id, novo);
-  for (const x of cad.slice(1)) await api.excluirAtendimento(x.id);
+  for (const x of cad.slice(1)) { await api.excluirAtendimento(x.id); esquecerNoCache(x.id); }
 }
 const desligado = uid => !!((S.usuarios || []).find(x => x.id === uid) || {}).desligado;
 const marcaDesligado = uid => desligado(uid) ? ' <span class="tag-deslig">desligado</span>' : '';
@@ -728,7 +751,7 @@ function formAtendimento(a, opts = {}) {
   const dono = admin || a.uid === S.perfil.id;
   if (!novo && !chamado && dono && (admin || !fech.length)) botoes.push({ t: 'Excluir', danger: true, fn: async () => {
     if (!confirm(fech.length ? `Excluir o chamado inteiro (${fech.length + 1} idas)? Essa ação não pode ser desfeita.` : 'Excluir este atendimento? Essa ação não pode ser desfeita.')) return false;
-    try { await api.excluirAtendimento(a.id); toast('Atendimento excluído.'); refresh(); return true; } catch (e) { toast(e.message, true); return false; }
+    try { await api.excluirAtendimento(a.id); esquecerNoCache(a.id); toast('Atendimento excluído.'); refresh(); return true; } catch (e) { toast(e.message, true); return false; }
   } });
   // chamado voltou do setor: qualquer técnico pode abrir a próxima ida
   if (!novo && !chamado && a.smax && PODE_REABRIR.includes(a.status || '')) botoes.push({ t: '↺ Chamado voltou: nova ida', fn: async () => {
@@ -938,7 +961,7 @@ async function telaPainel(main) {
     <div id="pn"><div class="empty">Carregando…</div></div>`;
   $('#fMes').onchange = e => { if (e.target.value) { S.mes = e.target.value; S.painelDia = ''; render(); } };
   $('#exp').onclick = exportarExcel;
-  let lista; try { const docs = await api.listarAtendimentos({ mes: S.mes }); S.assin_painel = assinatura(docs); lista = explodir(docs, S.mes); } catch (e) { return toast(e.message, true); }
+  let lista; try { const docs = await docsDoMes(S.mes); S.assin_painel = assinatura(docs); lista = explodir(docs, S.mes); } catch (e) { return toast(e.message, true); }
   S.comarcas = [...new Set([...lista.map(a => a.comarca), ...(S.comarcas || [])])];
   const mesGeral = montarPainel(S.mes, lista);        // lista de técnicos do mês (para os seletores)
   if (S.painelTec && !mesGeral.linhas.some(r => r.uid === S.painelTec)) S.painelTec = '';
@@ -1107,7 +1130,7 @@ function diaDetalhe(d, l) {
 async function exportarExcel() {
   if (!window.ExcelJS) return toast('Aguarde o carregamento e tente de novo.', true);
   toast('Gerando planilha…');
-  let lista; try { lista = explodir(await api.listarAtendimentos({ mes: S.mes }), S.mes); } catch (e) { return toast(e.message, true); }
+  let lista; try { lista = explodir(await docsDoMes(S.mes, true), S.mes); } catch (e) { return toast(e.message, true); }
   const p = montarPainel(S.mes, lista);
   const wb = new ExcelJS.Workbook();
   const azul = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3A5F' } };

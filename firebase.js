@@ -8,7 +8,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where,
-  serverTimestamp, writeBatch, arrayUnion,
+  serverTimestamp, writeBatch, arrayUnion, limit,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { firebaseConfig, DOMINIOS, ADMINS_INICIAIS } from './config.js';
 
@@ -100,6 +100,10 @@ export const api = {
     if (uid) l = l.filter(x => x.uid === uid || (Array.isArray(x.uids) && x.uids.includes(uid)));
     return l;
   }),
+  // só os chamados alterados depois de um momento (atualização automática barata: lê só o que mudou)
+  listarAlteradosDesde: tentar(async quando => lista(await getDocs(query(col('atendimentos'), where('atualizado_em', '>', quando))))),
+  // existe algum chamado no formato antigo (uma linha por ida)? lê no máximo 1 documento
+  temFormatoAntigo: tentar(async () => (await getDocs(query(col('atendimentos'), where('ida', '>', 1), limit(1)))).size > 0),
   // usado para não deixar registrar o mesmo chamado SMAX duas vezes
   buscarPorSmax: tentar(async smax => lista(await getDocs(query(col('atendimentos'), where('smax', '==', String(smax).trim()))))),
   // todos os atendimentos de um técnico (qualquer mês) — usado ao desligar alguém
