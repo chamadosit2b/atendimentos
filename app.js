@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261111e';
+import { api } from './firebase.js?v=20261111h';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -186,7 +186,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261111e';
+const VERSAO = '20261111h';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -216,6 +216,18 @@ function avisoVersao() {
 }
 // tira o ?v=... do endereço depois que carregou (fica mais limpo)
 if (new URL(location.href).searchParams.has('v')) { const u = new URL(location.href); u.searchParams.delete('v'); history.replaceState(null, '', u.toString()); }
+
+// --------------------------------------------------------------- créditos (escondidos: 10 cliques no logo)
+function creditos() {
+  modal('🎉 Você achou os créditos!', `<div class="creditos">
+      <div class="cred-logo"><i></i></div>
+      <h3>Atendimento Field</h3>
+      <p>Sistema de atendimentos técnicos</p>
+      <p class="cred-autor">Idealizado por <b>Emerson Araujo</b> e <b>Matheus Motta</b><br>Equipe de Atibaia e Bragança Paulista · ${new Date().getFullYear()}</p>
+      <p class="hint">Versão ${esc(VERSAO)}</p>
+    </div>`, [{ t: 'Fechar', primary: true }], 'sm');
+}
+creditos.cliques = 0; creditos.ultimo = 0;
 
 // --------------------------------------------------------------- cache dos chamados do mês
 // A 1ª vez (e no ↻ Atualizar) lê o mês inteiro. Depois, o automático só busca o que foi alterado
@@ -433,7 +445,12 @@ function layout(r) {
   document.onclick = () => $('#meMenu') && $('#meMenu').classList.remove('open');
   ligarCampanha($('header.top'));
   // logo: volta para a tela principal (se já estiver nela, recarrega a lista)
-  $('#logoInicio').onclick = e => { if (rota() === 'atendimentos') { e.preventDefault(); scrollTo(0, 0); render(); } };
+  $('#logoInicio').onclick = e => {
+    // surpresa: 10 cliques seguidos no logo mostram os créditos
+    const t = Date.now(); creditos.cliques = (t - creditos.ultimo < 1500 ? creditos.cliques : 0) + 1; creditos.ultimo = t;
+    if (creditos.cliques >= 10) { e.preventDefault(); creditos.cliques = 0; return creditos(); }
+    if (rota() === 'atendimentos') { e.preventDefault(); scrollTo(0, 0); if (creditos.cliques === 1) render(); }
+  };
   $('#mSair').onclick = () => api.sair();
   $('#mSenha').onclick = trocarSenha;
 }

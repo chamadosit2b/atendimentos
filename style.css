@@ -330,3 +330,11 @@ fieldset.devol.agend legend{color:var(--st-ag)}
 a.brandmark{text-decoration:none;cursor:pointer;border-radius:8px}
 a.brandmark:hover span{text-decoration:underline;text-underline-offset:3px}
 a.brandmark:focus-visible{outline:2px solid rgba(255,255,255,.7);outline-offset:3px}
+
+/* créditos (10 cliques no logo) */
+.creditos{text-align:center;padding:6px 0 2px}
+.creditos h3{margin:10px 0 2px;font-size:20px}
+.creditos p{margin:4px 0;color:var(--ink-2)}
+.creditos .cred-autor{margin-top:14px;color:var(--ink);line-height:1.6}
+.cred-logo{display:inline-grid;place-items:center;width:56px;height:56px;border-radius:14px;background:var(--top,var(--brand))}
+.cred-logo i{display:block;width:22px;height:12px;border-left:4px solid #fff;border-bottom:4px solid #fff;transform:rotate(-45deg) translate(2px,-2px)}
