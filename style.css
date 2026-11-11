@@ -315,3 +315,13 @@ fieldset.devol.agend legend{color:var(--st-ag)}
 .atu{display:inline-flex;align-items:center;gap:8px}
 .atu small{color:var(--ink-3);font-size:12px;white-space:nowrap}
 @media (max-width:720px){.atu small{display:none}}
+
+/* devoluções por setor: lista que abre ao clicar */
+.tab-dev tr.dev-set{cursor:pointer}.tab-dev tr.dev-set:hover{background:var(--surface-2)}
+.tab-dev .dev-seta{color:var(--ink-3);font-size:12px;white-space:nowrap}
+.tab-dev tr.dev-det td{background:var(--surface-2);padding:6px 10px 8px 26px}
+.tab-dev tr.dev-det ul{margin:0;padding:0;list-style:none}
+.tab-dev tr.dev-det li{padding:7px 0;border-bottom:1px dashed var(--line);cursor:pointer;line-height:1.45}
+.tab-dev tr.dev-det li:last-child{border-bottom:0}
+.tab-dev tr.dev-det li:hover b{text-decoration:underline}
+.tab-dev .mono{font-family:ui-monospace,Consolas,monospace}

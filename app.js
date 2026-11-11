@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261103';
+import { api } from './firebase.js?v=20261111';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -186,7 +186,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261103';
+const VERSAO = '20261111';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -919,7 +919,7 @@ function montarPainel(mes, lista) {
   const atendidos = lista.filter(contaComoAtendido);
   total.chamados = new Set(atendidos.map(a => a.smax || a.id)).size;
   // devoluções por setor (com os motivos)
-  const dv = {}; lista.filter(a => a.status === 'DEVOLVIDO').forEach(a => { const st = (a.devolucao && a.devolucao.setor) || a.encaminhado_para || 'Sem setor'; const g = dv[st] = dv[st] || { setor: st, n: 0, motivos: {}, par: [] }; g.n++; const pm = parado(a); if (pm !== null) g.par.push(pm); const mo = (a.devolucao && a.devolucao.motivo) || 'Sem motivo'; g.motivos[mo] = (g.motivos[mo] || 0) + 1; });
+  const dv = {}; lista.filter(a => a.status === 'DEVOLVIDO').forEach(a => { const st = (a.devolucao && a.devolucao.setor) || a.encaminhado_para || 'Sem setor'; const g = dv[st] = dv[st] || { setor: st, n: 0, motivos: {}, par: [], itens: [] }; g.n++; g.itens.push(a); const pm = parado(a); if (pm !== null) g.par.push(pm); const mo = (a.devolucao && a.devolucao.motivo) || 'Sem motivo'; g.motivos[mo] = (g.motivos[mo] || 0) + 1; });
   const enviados = {}; atendidos.forEach(a => { if (a.encaminhado_para) enviados[a.encaminhado_para] = (enviados[a.encaminhado_para] || 0) + 1; });
   const devolucoes = Object.values(dv).map(g => ({ ...g, enviados: enviados[g.setor] || g.n, parMedio: g.par.length ? Math.round(g.par.reduce((t, x) => t + x, 0) / g.par.length) : null })).sort((a, b) => b.n - a.n);
   tempos(total, atendidos); temposTent(total, lista);
@@ -994,9 +994,11 @@ async function telaPainel(main) {
       <div class="graficos">
           <div class="card"><h3>Atendimento SAJ — encaminhados para${filtros ? ` <span class="muted">· ${filtros.replace(/<\/?b>/g, '')}</span>` : ''}</h3><div class="pad bars">${p.destinos.map(d => `<div class="bar"><span>${esc(d.destino)}</span><div class="t"><i style="width:${d.n / maxD * 100}%"></i></div><b>${d.n}</b></div>`).join('')}</div></div>
           ${p.devolucoes.length ? `<div class="card"><h3>Devoluções por setor${filtros ? ` <span class="muted">· ${filtros.replace(/<\/?b>/g, '')}</span>` : ''}</h3><div class="pad">
-            <table class="tab-dev"><thead><tr><th>Setor</th><th class="num">Devolvidos</th><th class="num" title="Devolvidos ÷ encaminhados para o setor no período">Taxa</th><th class="num" title="Do encaminhamento até a devolução">Tempo médio parado</th><th>Motivos</th></tr></thead><tbody>
-            ${p.devolucoes.map(g => `<tr><td><span class="tag">${esc(g.setor)}</span></td><td class="num"><b>${g.n}</b></td><td class="num">${Math.round(g.n / Math.max(g.n, g.enviados) * 100)}%</td><td class="num">${fmtMin(g.parMedio)}</td><td class="wrap">${Object.entries(g.motivos).sort((x, y) => y[1] - x[1]).map(([mo, n]) => `${esc(mo)} <span class="muted">${n}</span>`).join(' · ')}</td></tr>`).join('')}
-            </tbody></table><div class="hint" style="margin-top:8px">Taxa = devolvidos ÷ chamados encaminhados para o setor no período. Tempo parado = do fim da ida até a devolução (não entra nas horas dos técnicos).</div></div></div>` : ''}
+            <table class="tab-dev"><thead><tr><th>Setor</th><th class="num">Devolvidos</th><th class="num" title="Devolvidos ÷ encaminhados para o setor no período">Taxa</th><th class="num" title="Do encaminhamento até a devolução">Tempo médio parado</th><th></th></tr></thead><tbody>
+            ${p.devolucoes.map((g, gi) => { const aberto = S.devAberto === g.setor; return `<tr class="dev-set" data-setor="${esc(g.setor)}"><td><span class="tag">${esc(g.setor)}</span></td><td class="num"><b>${g.n}</b></td><td class="num">${Math.round(g.n / Math.max(g.n, g.enviados) * 100)}%</td><td class="num">${fmtMin(g.parMedio)}</td><td class="num dev-seta">${aberto ? '▾ fechar' : '▸ ver motivos'}</td></tr>
+              ${aberto ? `<tr class="dev-det"><td colspan="5"><ul>${[...g.itens].sort((x, y) => ((y.devolucao || {}).em || '').localeCompare((x.devolucao || {}).em || '')).map((a, ii) => { const pm = parado(a), d = a.devolucao || {};
+                return `<li data-g="${gi}" data-i="${ii}"><b class="mono">SMAX ${esc(a.smax)}</b> · ${esc(nomeComarca(a.comarca))} · ${fmtData(d.em || a.data_ref).slice(0, 5)}${pm !== null ? ' · parado ' + fmtMin(pm) : ''}<br>${esc(d.motivo || 'Sem motivo')}</li>`; }).join('')}</ul></td></tr>` : ''}`; }).join('')}
+            </tbody></table><div class="hint" style="margin-top:8px">Clique no setor para ver os motivos e os chamados. Taxa = devolvidos ÷ chamados encaminhados para o setor no período. Tempo parado = do fim da ida até a devolução (não entra nas horas dos técnicos).</div></div></div>` : ''}
           <div class="card"><h3>Comarcas com mais atendimentos${filtros ? ` <span class="muted">· ${filtros.replace(/<\/?b>/g, '')}</span>` : ''}</h3><div class="pad bars">${p.porComarca.length ? p.porComarca.map(d => `<div class="bar"><span title="${esc(d.comarca)}">${esc(d.comarca)}</span><div class="t"><i style="width:${d.n / maxC * 100}%"></i></div><b>${d.n}</b></div>`).join('') : `<div class="muted">Sem dados ${dia ? 'no dia' : 'no mês'}.</div>`}</div></div>
       </div>
       <div class="card cal-card">
@@ -1019,6 +1021,12 @@ async function telaPainel(main) {
     $('#pTec').onchange = e => escolher(e.target.value);
     $('#calTec').onchange = e => escolher(e.target.value);
     if ($('#verTodos2')) $('#verTodos2').onclick = e => { e.preventDefault(); escolher(''); };
+    // devoluções: clique no setor abre/fecha a lista; clique num item abre o chamado
+    $$('#pn tr.dev-set').forEach(tr => tr.onclick = () => { S.devAberto = S.devAberto === tr.dataset.setor ? '' : tr.dataset.setor; desenhar(); });
+    $$('#pn tr.dev-det li').forEach(li => li.onclick = () => {
+      const g = p.devolucoes[li.dataset.g], l = [...g.itens].sort((x, y) => ((y.devolucao || {}).em || '').localeCompare((x.devolucao || {}).em || ''));
+      const a = l[li.dataset.i]; if (a) formAtendimento(a._doc || a);
+    });
     $$('#pn tbody tr[data-uid]').forEach(tr => tr.onclick = () => escolher(tr.dataset.uid === uid ? '' : tr.dataset.uid));
   };
   desenhar();
