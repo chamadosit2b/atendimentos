@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261111h';
+import { api } from './firebase.js?v=20261116';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -186,7 +186,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261111h';
+const VERSAO = '20261116';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -229,6 +229,57 @@ function creditos() {
 }
 creditos.cliques = 0; creditos.ultimo = 0;
 
+// --------------------------------------------------------------- exclusão em massa e Lixeira (só o líder)
+const DIAS_LIXEIRA = 30;
+function excluirEmMassa(itens, depois) {
+  if (!itens.length) return;
+  const n = itens.length;
+  modal(`Excluir ${n} chamado(s)`, `<form novalidate><div id="e"></div>
+    <p style="margin-top:0">Os chamados abaixo vão para a <b>Lixeira</b>: saem das telas, do painel e do Excel. Você pode <b>restaurar em até ${DIAS_LIXEIRA} dias</b>; depois disso são apagados de vez.</p>
+    <div class="lista-excluir">${itens.slice(0, 40).map(a => `<div><b class="mono">${esc(a.smax || '—')}</b> · ${esc(a.comarca)} · ${fmtData(a.data_ref)} · ${esc(nomeDe(a.uid, a.tecnico))} · ${chip(a.status)}</div>`).join('')}${n > 40 ? `<div class="muted">… e mais ${n - 40}</div>` : ''}</div>
+    <label class="f" style="margin-top:12px"><span>Para confirmar, digite <b>${n}</b></span><input name="conf" inputmode="numeric" autocomplete="off" placeholder="${n}"></label>
+  </form>`, [{ t: 'Cancelar' }, { t: `🗑 Excluir ${n}`, danger: true, fn: async ov => {
+    if (s($('input[name=conf]', ov).value) !== String(n)) { erroBox($('#e', ov), `Digite ${n} para confirmar.`); return false; }
+    try {
+      await api.moverParaLixeira(itens.map(a => a.id), S.perfil.nome, agoraLocal());
+      itens.forEach(a => esquecerNoCache(a.id));
+      toast(`${n} chamado(s) movido(s) para a Lixeira.`); if (depois) depois(); return true;
+    } catch (e) { erroBox($('#e', ov), e.message); return false; }
+  } }], 'sm');
+}
+async function telaLixeira() {
+  let l; try { l = await api.listarLixeira(); } catch (e) { return toast(e.message, true); }
+  // apaga de vez o que está na lixeira há mais de 30 dias
+  const limite = Date.now() - DIAS_LIXEIRA * 86400000;
+  const vencidos = l.filter(a => new Date(a.lixeira.em).getTime() < limite);
+  if (vencidos.length) { try { await api.excluirDefinitivo(vencidos.map(a => a.id)); } catch {} l = l.filter(a => !vencidos.includes(a)); }
+  l.sort((a, b) => (b.lixeira.em || '').localeCompare(a.lixeira.em || ''));
+  const diasRest = a => Math.max(0, Math.ceil((new Date(a.lixeira.em).getTime() + DIAS_LIXEIRA * 86400000 - Date.now()) / 86400000));
+  const marc = new Set();
+  const { ov, fechar } = modal(`🗑 Lixeira (${l.length})`, `<div id="e"></div>${l.length ? `
+    <p class="hint" style="margin-top:0">Chamados excluídos. Ficam aqui por ${DIAS_LIXEIRA} dias e depois são apagados de vez.</p>
+    <div class="tablewrap"><table><thead><tr><th class="col-sel"><input type="checkbox" id="lxTodos"></th><th>SMAX</th><th>Comarca</th><th>Data</th><th>Técnico</th><th>Status</th><th>Excluído por</th><th class="num">Some em</th></tr></thead><tbody>
+    ${l.map(a => `<tr><td class="col-sel"><input type="checkbox" data-lx="${esc(a.id)}"></td><td class="mono"><b>${esc(a.smax || '—')}</b></td><td>${esc(a.comarca)}</td><td>${fmtData(a.data_ref)}</td><td>${esc(nomeDe(a.uid, a.tecnico))}</td><td>${chip(a.status)}</td>
+      <td>${esc(a.lixeira.por || '')} <span class="muted">${fmtDH((a.lixeira.em || '').slice(0, 16))}</span></td><td class="num">${diasRest(a)} dia(s)</td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="empty">A Lixeira está vazia.</div>'}`, l.length ? [
+    { t: 'Apagar de vez', danger: true, fn: async () => {
+      const ids = marc.size ? [...marc] : l.map(a => a.id);
+      if (!confirm(`Apagar DE VEZ ${ids.length} chamado(s)${marc.size ? ' marcados' : ' (a Lixeira inteira)'}? Isso não pode ser desfeito.`)) return false;
+      try { await api.excluirDefinitivo(ids); toast(`${ids.length} chamado(s) apagado(s) de vez.`); return true; } catch (e) { toast(e.message, true); return false; }
+    } },
+    { t: 'Fechar' },
+    { t: '↩ Restaurar marcados', primary: true, fn: async ov2 => {
+      if (!marc.size) { erroBox($('#e', ov2), 'Marque os chamados que quer restaurar.'); return false; }
+      try { await api.restaurarDaLixeira([...marc]); toast(`${marc.size} chamado(s) restaurado(s).`); refresh(); return true; } catch (e) { toast(e.message, true); return false; }
+    } },
+  ] : [{ t: 'Fechar', primary: true }], 'lg');
+  if (!l.length) return;
+  const atualiza = () => { const b = $$('footer button', ov); b[0].textContent = marc.size ? `Apagar de vez (${marc.size})` : 'Esvaziar Lixeira'; b[2].textContent = `↩ Restaurar marcados${marc.size ? ` (${marc.size})` : ''}`; };
+  $$('input[data-lx]', ov).forEach(cb => cb.onchange = () => { cb.checked ? marc.add(cb.dataset.lx) : marc.delete(cb.dataset.lx); $('#lxTodos', ov).checked = marc.size === l.length; atualiza(); });
+  $('#lxTodos', ov).onchange = e => { $$('input[data-lx]', ov).forEach(cb => { cb.checked = e.target.checked; cb.checked ? marc.add(cb.dataset.lx) : marc.delete(cb.dataset.lx); }); atualiza(); };
+  atualiza();
+}
+
 // --------------------------------------------------------------- cache dos chamados do mês
 // A 1ª vez (e no ↻ Atualizar) lê o mês inteiro. Depois, o automático só busca o que foi alterado
 // desde a última busca. Isso economiza as leituras do plano grátis do Firebase (50 mil por dia).
@@ -241,14 +292,15 @@ async function docsDoMes(mes, completo) {
     const inicio = Date.now();
     const l = await api.listarAtendimentos({ mes });
     S.cache = { mes, docs: new Map(l.map(d => [d.id, d])), quando: inicio };
-    return l;
+    return l.filter(foraDaLixeira);
   }
   const inicio = Date.now();
   const alt = await api.listarAlteradosDesde(new Date(c.quando - MARGEM_RELOGIO));
   alt.forEach(d => { if (doMes(d, mes)) c.docs.set(d.id, d); else c.docs.delete(d.id); });
   c.quando = inicio;
-  return [...c.docs.values()];
+  return [...c.docs.values()].filter(foraDaLixeira);
 }
+const foraDaLixeira = d => !d.lixeira;
 const doTecnico = (l, uid) => uid ? l.filter(x => x.uid === uid || (Array.isArray(x.uids) && x.uids.includes(uid))) : l;
 function esquecerNoCache(id) { if (S.cache.docs) S.cache.docs.delete(id); }
 
@@ -288,7 +340,7 @@ async function atualizarTela(manual) {
 // no automático, só redesenha o Painel/Agenda se algo mudou (evita a tela piscar à toa)
 async function mudou(tela) {
   try {
-    const l = tela === 'painel' ? await docsDoMes(S.mes) : await api.listarAgendados({ uid: isAdmin() ? null : S.perfil.id });
+    const l = tela === 'painel' ? await docsDoMes(S.mes) : (await api.listarAgendados({ uid: isAdmin() ? null : S.perfil.id })).filter(foraDaLixeira);
     const ass = assinatura(l), k = 'assin_' + tela, antes = S[k]; S[k] = ass; return antes !== ass;
   } catch { return false; }
 }
@@ -504,6 +556,7 @@ async function telaAtendimentos(main) {
     <div class="head"><div><h2>${admin ? 'Atendimentos da equipe' : 'Atendimentos'}</h2><p>${esc(nomeMes(S.mes))}</p></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${botaoAtu()}
+        ${admin ? '<button class="btn" id="btnLixeira" title="Chamados excluídos (dá para restaurar)">🗑 Lixeira</button>' : ''}
         <button class="btn" id="exp">Exportar Excel</button>
         <button class="btn primary" id="novo">+ Novo atendimento</button>
       </div></div>
@@ -517,11 +570,25 @@ async function telaAtendimentos(main) {
       <select id="fSt" aria-label="Status"><option value="">Todos os status</option>${[...STATUS, 'DEVOLVIDO'].map(x => `<option ${S.filtros.status === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
       <select id="fTec" aria-label="Técnico"><option value="">${admin ? 'Todos os técnicos' : 'Toda a equipe'}</option>${equipe.map(t => `<option value="${t.id}" ${S.filtros.tecnico === t.id ? 'selected' : ''}>${t.id === S.perfil.id ? 'Só os meus' : esc(t.nome)}</option>`).join('')}</select>
     </div>
+    ${admin ? '<div class="acoes-sel" id="acoesSel" hidden></div>' : ''}
     <div class="card"><div class="tablewrap" id="tab"><div class="empty">Carregando…</div></div></div>`;
   $('#novo').onclick = () => formAtendimento(null);
+  if (admin) $('#btnLixeira').onclick = () => telaLixeira();
+  const sel = new Set();   // chamados marcados (só o líder)
   $('#exp').onclick = exportarExcel;
   $('#fMes').onchange = e => { if (e.target.value) { S.mes = e.target.value; S.filtros.dia = ''; render(); } };
   if (S.filtros.dia && S.filtros.dia.slice(0, 7) !== S.mes) S.filtros.dia = '';
+  // barra que aparece quando o líder marca chamados
+  function barraSel(lista) {
+    const el = $('#acoesSel'); if (!el) return;
+    [...sel].forEach(id => { if (!base.some(a => a.id === id)) sel.delete(id); });
+    el.hidden = !sel.size; if (!sel.size) return;
+    const fora = [...sel].filter(id => !lista.some(a => a.id === id)).length;
+    el.innerHTML = `<b>${sel.size}</b> chamado(s) selecionado(s)${fora ? ` <span class="muted">(${fora} fora dos filtros atuais)</span>` : ''}
+      <button class="btn sm danger" id="selExcluir">🗑 Excluir selecionados</button><button class="btn sm" id="selLimpar">Limpar seleção</button>`;
+    $('#selLimpar').onclick = () => { sel.clear(); mostrar(); };
+    $('#selExcluir').onclick = () => excluirEmMassa(base.filter(a => sel.has(a.id)), () => { sel.clear(); carregar(); });
+  }
   $('#fDia').onchange = e => { S.filtros.dia = e.target.value; mostrar(); };
   if ($('#fHoje')) $('#fHoje').onclick = () => { S.filtros.dia = hojeISO(); mostrar(); };
   let deb; $('#fQ').oninput = e => { clearTimeout(deb); deb = setTimeout(() => { S.filtros.q = e.target.value; mostrar(); }, 200); };
@@ -565,20 +632,27 @@ async function telaAtendimentos(main) {
       <div class="kpi tot"><span>Chamados</span><b>${lista.length}</b>${lista.some(a => numIdas(a) > 1) ? `<small class="fora">${lista.reduce((t, a) => t + numIdas(a), 0)} idas no total</small>` : ''}</div>`;
     if (!lista.length) {
       $('#tab').innerHTML = `<div class="empty">Nenhum atendimento ${S.filtros.dia ? 'em ' + fmtData(S.filtros.dia) : 'em ' + esc(nomeMes(S.mes))}${q || S.filtros.status ? ' com esses filtros' : ''}.<br><br><button class="btn primary" id="novo2">+ Registrar atendimento</button></div>`;
-      $('#novo2').onclick = () => formAtendimento(null); return;
+      $('#novo2').onclick = () => formAtendimento(null); barraSel(lista); return;
     }
     const mostraTec = S.filtros.tecnico !== S.perfil.id;
+    const todosMarcados = lista.length && lista.every(a => sel.has(a.id));
     $('#tab').innerHTML = `<table><thead><tr>
-      <th>Solicitação SMAX</th><th>Comarca</th><th>Início</th><th>Término</th><th class="num" title="Soma das idas do chamado">Tempo</th><th>Ticket Softplan</th><th>Status</th><th>Encaminhado p/</th><th>Home/Local</th>${mostraTec ? '<th>Técnico</th>' : ''}</tr></thead>
+      ${admin ? `<th class="col-sel"><input type="checkbox" id="selTodos" title="Marcar todos os chamados da lista (com os filtros atuais)" ${todosMarcados ? 'checked' : ''}></th>` : ''}<th>Solicitação SMAX</th><th>Comarca</th><th>Início</th><th>Término</th><th class="num" title="Soma das idas do chamado">Tempo</th><th>Ticket Softplan</th><th>Status</th><th>Encaminhado p/</th><th>Home/Local</th>${mostraTec ? '<th>Técnico</th>' : ''}</tr></thead>
       <tbody>${lista.map(a => { const fe = idasFechadas(a), ini = fe.length ? fe[0].inicio : a.inicio, tm = minutosChamado(a), nomes = unicos([...fe.map(x => nomeDe(x.uid, x.tecnico)), nomeDe(a.uid, a.tecnico)]);
-        return `<tr class="click ${fe.length ? 'com-idas' : ''}" data-id="${esc(a.id)}">
-        <td class="mono"><b>${esc(a.smax) || '<span class="muted">—</span>'}</b>${fe.length ? ` <span class="idas" title="Chamado voltou do setor">↺ ${fe.length + 1} idas</span>` : a.ida > 1 ? ` <span class="tag-ida" title="Formato antigo">${ordinal(a.ida)}</span>` : ''}</td>
+        return `<tr class="click ${fe.length ? 'com-idas' : ''} ${sel.has(a.id) ? 'marcado' : ''}" data-id="${esc(a.id)}">
+        ${admin ? `<td class="col-sel"><input type="checkbox" data-sel="${esc(a.id)}" ${sel.has(a.id) ? 'checked' : ''} aria-label="Selecionar SMAX ${esc(a.smax)}"></td>` : ''}<td class="mono"><b>${esc(a.smax) || '<span class="muted">—</span>'}</b>${fe.length ? ` <span class="idas" title="Chamado voltou do setor">↺ ${fe.length + 1} idas</span>` : a.ida > 1 ? ` <span class="tag-ida" title="Formato antigo">${ordinal(a.ida)}</span>` : ''}</td>
         <td>${esc(a.comarca)}</td><td>${fmtDH(ini)}</td><td>${fmtDH(a.termino)}</td>
         <td class="num">${fe.length ? `<b>${fmtHM(tm)}</b>` : duracao(a.inicio, a.termino)}</td><td class="mono">${esc(a.ticket_softplan)}</td>
         <td>${chip(a.status)}</td><td>${a.encaminhado_para ? `<span class="tag">${esc(a.encaminhado_para)}</span>` : ''}</td>
         <td>${esc(a.home_local)}</td>${mostraTec ? `<td>${nomes.map(esc).join(' → ')}${marcaDesligado(a.uid)}</td>` : ''}
       </tr>`; }).join('')}</tbody></table>`;
     $$('#tab tr[data-id]').forEach(tr => tr.onclick = () => formAtendimento(lista.find(a => a.id === tr.dataset.id)));
+    if (admin) {
+      $$('#tab td.col-sel').forEach(td => td.onclick = e => e.stopPropagation());
+      $$('#tab input[data-sel]').forEach(cb => cb.onchange = () => { cb.checked ? sel.add(cb.dataset.sel) : sel.delete(cb.dataset.sel); cb.closest('tr').classList.toggle('marcado', cb.checked); $('#selTodos').checked = lista.every(a => sel.has(a.id)); barraSel(lista); });
+      $('#selTodos').onchange = e => { lista.forEach(a => e.target.checked ? sel.add(a.id) : sel.delete(a.id)); mostrar(); };
+    }
+    barraSel(lista);
   }
   S.recarregar = carregar;
   carregar();
@@ -767,8 +841,8 @@ function formAtendimento(a, opts = {}) {
   const botoes = [];
   const dono = admin || a.uid === S.perfil.id;
   if (!novo && !chamado && dono && (admin || !fech.length)) botoes.push({ t: 'Excluir', danger: true, fn: async () => {
-    if (!confirm(fech.length ? `Excluir o chamado inteiro (${fech.length + 1} idas)? Essa ação não pode ser desfeita.` : 'Excluir este atendimento? Essa ação não pode ser desfeita.')) return false;
-    try { await api.excluirAtendimento(a.id); esquecerNoCache(a.id); toast('Atendimento excluído.'); refresh(); return true; } catch (e) { toast(e.message, true); return false; }
+    if (!confirm(`${fech.length ? `Excluir o chamado inteiro (${fech.length + 1} idas)?` : 'Excluir este atendimento?'}\n\nEle vai para a Lixeira, e o líder pode restaurar em até ${DIAS_LIXEIRA} dias.`)) return false;
+    try { await api.moverParaLixeira([a.id], S.perfil.nome, agoraLocal()); esquecerNoCache(a.id); toast('Atendimento movido para a Lixeira.'); refresh(); return true; } catch (e) { toast(e.message, true); return false; }
   } });
   // chamado voltou do setor: qualquer técnico pode abrir a próxima ida
   if (!novo && !chamado && a.smax && PODE_REABRIR.includes(a.status || '')) botoes.push({ t: '↺ Chamado voltou: nova ida', fn: async () => {
@@ -862,7 +936,7 @@ async function salvarListaComarcas(l) {
 
 // procura outro atendimento com o mesmo SMAX (em qualquer mês)
 async function smaxDuplicado(smax, idAtual) {
-  const l = (await api.buscarPorSmax(smax)).filter(x => x.id !== idAtual);
+  const l = (await api.buscarPorSmax(smax)).filter(x => x.id !== idAtual && foraDaLixeira(x));
   // a ida mais recente do chamado
   l.sort((x, y) => ((y.ida || 1) - (x.ida || 1)) || (y.inicio || y.data_ref || '').localeCompare(x.inicio || x.data_ref || ''));
   return l[0] || null;
@@ -894,7 +968,7 @@ async function telaAgenda(main) {
   main.innerHTML = `<div class="head"><div><h2>Agenda</h2><p>Atendimentos com status AGENDADO, em ordem de horário.</p></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${botaoAtu()}<button class="btn primary" id="novo">+ Novo atendimento</button></div></div><div id="lista"><div class="empty">Carregando…</div></div>`;
   $('#novo').onclick = () => formAtendimento(null);
-  let lista; try { lista = await api.listarAgendados({ uid: isAdmin() ? null : S.perfil.id }); S.assin_agenda = assinatura(lista); } catch (e) { return toast(e.message, true); }
+  let lista; try { lista = (await api.listarAgendados({ uid: isAdmin() ? null : S.perfil.id })).filter(foraDaLixeira); S.assin_agenda = assinatura(lista); } catch (e) { return toast(e.message, true); }
   lista.sort((a, b) => (a.agendamento || '9999').localeCompare(b.agendamento || '9999'));
   if (!lista.length) { $('#lista').innerHTML = `<div class="card"><div class="empty">Nenhum atendimento agendado no momento.</div></div>`; return; }
   const agora = agoraLocal();
@@ -1343,7 +1417,7 @@ async function telaUsuarios(main) {
 const ABERTOS = ['AGENDADO', 'TENT CONTATO', 'ENCAMINHADO'];
 async function desligarUsuario(u) {
   let todos;
-  try { todos = await api.listarPorTecnico(u.id); } catch (e) { return toast(e.message, true); }
+  try { todos = (await api.listarPorTecnico(u.id)).filter(foraDaLixeira); } catch (e) { return toast(e.message, true); }
   const abertos = todos.filter(a => ABERTOS.includes(a.status));
   const destinos = S.usuarios.filter(x => x.ativo && !x.desligado && x.id !== u.id).sort((a, b) => a.nome.localeCompare(b.nome));
   modal(`Desligar ${esc(u.nome)} da equipe`, `<form novalidate><div id="e"></div>

@@ -8,7 +8,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where,
-  serverTimestamp, writeBatch, arrayUnion, limit,
+  serverTimestamp, writeBatch, arrayUnion, limit, deleteField,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { firebaseConfig, DOMINIOS, ADMINS_INICIAIS } from './config.js';
 
@@ -144,6 +144,29 @@ export const api = {
   // chamado devolvido pelo setor: marca a ida anterior (qualquer técnico ativo pode, pelas regras)
   marcarDevolvido: tentar(async (id, { status, devolucao, historico }) => {
     await updateDoc(doc(db, 'atendimentos', id), { status, devolucao, historico, atualizado_em: serverTimestamp() });
+  }),
+  // ---------- lixeira (exclusão em massa do líder; restaura em até 30 dias)
+  moverParaLixeira: tentar(async (ids, por, em) => {
+    for (let i = 0; i < ids.length; i += 400) {
+      const b = writeBatch(db);
+      ids.slice(i, i + 400).forEach(id => b.update(doc(db, 'atendimentos', id), { lixeira: { em, por }, atualizado_em: serverTimestamp() }));
+      await b.commit();
+    }
+  }),
+  restaurarDaLixeira: tentar(async ids => {
+    for (let i = 0; i < ids.length; i += 400) {
+      const b = writeBatch(db);
+      ids.slice(i, i + 400).forEach(id => b.update(doc(db, 'atendimentos', id), { lixeira: deleteField(), atualizado_em: serverTimestamp() }));
+      await b.commit();
+    }
+  }),
+  listarLixeira: tentar(async () => lista(await getDocs(query(col('atendimentos'), where('lixeira.em', '>=', ''))))),
+  excluirDefinitivo: tentar(async ids => {
+    for (let i = 0; i < ids.length; i += 400) {
+      const b = writeBatch(db);
+      ids.slice(i, i + 400).forEach(id => b.delete(doc(db, 'atendimentos', id)));
+      await b.commit();
+    }
   }),
   // grava o registro inteiro (usado ao juntar chamados do formato antigo)
   substituirAtendimento: tentar(async (id, dados) => { await setDoc(doc(db, 'atendimentos', id), { ...dados, atualizado_em: serverTimestamp() }); }),

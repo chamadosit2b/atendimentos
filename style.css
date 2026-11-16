@@ -338,3 +338,12 @@ a.brandmark:focus-visible{outline:2px solid rgba(255,255,255,.7);outline-offset:
 .creditos .cred-autor{margin-top:14px;color:var(--ink);line-height:1.6}
 .cred-logo{display:inline-grid;place-items:center;width:56px;height:56px;border-radius:14px;background:var(--top,var(--brand))}
 .cred-logo i{display:block;width:22px;height:12px;border-left:4px solid #fff;border-bottom:4px solid #fff;transform:rotate(-45deg) translate(2px,-2px)}
+
+/* seleção e exclusão em massa (líder) */
+.col-sel{width:34px;text-align:center}
+.col-sel input{width:16px;height:16px;cursor:pointer;accent-color:var(--brand-2)}
+tr.marcado{background:#eef4ff !important}
+.acoes-sel{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff7e6;border:1px solid #f0c36d;border-radius:var(--radius);padding:8px 12px;margin-bottom:10px;font-size:14px}
+.acoes-sel[hidden]{display:none}
+.lista-excluir{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;background:var(--surface-2)}
+.lista-excluir div{padding:4px 0;border-bottom:1px dashed var(--line)}.lista-excluir div:last-child{border:0}

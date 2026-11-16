@@ -34,17 +34,26 @@ service cloud.firestore {
     function atendimentoValido(d) {
       return d.keys().hasOnly(['uid', 'tecnico', 'smax', 'comarca', 'inicio', 'termino', 'ticket_softplan',
                                'status', 'encaminhado_para', 'home_local', 'agendamento', 'usuario_atendido',
-                               'obs', 'data_ref', 'mes', 'criado_em', 'atualizado_em'])
+                               'obs', 'data_ref', 'mes', 'criado_em', 'atualizado_em', 'historico',
+                               'ida', 'origem', 'devolucao', 'idas', 'meses', 'uids', 'lixeira'])
         && d.keys().hasAll(['uid', 'smax', 'comarca', 'status', 'mes'])
         && d.uid is string
         && d.mes is string && d.mes.matches('[0-9]{4}-[0-9]{2}')
-        && d.status in ['', 'ENCAMINHADO', 'TENT CONTATO', 'AGENDADO', 'FECHADO']
+        && d.status in ['', 'ENCAMINHADO', 'TENT CONTATO', 'AGENDADO', 'FECHADO', 'DEVOLVIDO']
+        && (!('ida' in d) || (d.ida is int && d.ida >= 1 && d.ida <= 50))
+        && textoOk(d, 'origem', 60)
+        && (!('devolucao' in d) || d.devolucao is map)
+        && (!('idas' in d) || (d.idas is list && d.idas.size() <= 50))
+        && (!('meses' in d) || (d.meses is list && d.meses.size() <= 60))
+        && (!('uids' in d) || (d.uids is list && d.uids.size() <= 60))
+        && (!('lixeira' in d) || d.lixeira is map)
         && (!('home_local' in d) || d.home_local in ['', 'HOME', 'LOCAL'])
         && d.comarca is string && d.comarca.size() > 0
         && textoOk(d, 'smax', 60) && textoOk(d, 'comarca', 120) && textoOk(d, 'tecnico', 80)
         && textoOk(d, 'inicio', 16) && textoOk(d, 'termino', 16) && textoOk(d, 'agendamento', 16)
         && textoOk(d, 'ticket_softplan', 60) && textoOk(d, 'encaminhado_para', 40)
-        && textoOk(d, 'usuario_atendido', 120) && textoOk(d, 'obs', 2000) && textoOk(d, 'data_ref', 10);
+        && textoOk(d, 'usuario_atendido', 120) && textoOk(d, 'obs', 2000) && textoOk(d, 'data_ref', 10)
+        && (!('historico' in d) || (d.historico is list && d.historico.size() <= 300));
     }
 
     // ------------------------------------------------------------- usuários
@@ -63,10 +72,10 @@ service cloud.firestore {
         && ((request.resource.data.perfil == 'tecnico' && request.resource.data.ativo == false)
             || (request.resource.data.perfil == 'admin' && request.resource.data.ativo == true && adminInicial()));
 
-      // admin: muda nome, perfil e libera/bloqueia (campos ativo e bloqueado) (não pode mexer no próprio perfil/ativo)
+      // admin: muda nome, perfil, libera/bloqueia e desliga/reativa (não pode mexer no próprio perfil/ativo)
       // usuário ativo: só muda o próprio nome
       allow update: if (admin() && uid != request.auth.uid
-                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nome', 'perfil', 'ativo', 'bloqueado'])
+                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nome', 'perfil', 'ativo', 'bloqueado', 'desligado', 'desligado_em', 'desligado_por'])
                          && request.resource.data.perfil in ['admin', 'tecnico']
                          && request.resource.data.ativo is bool)
                     || (ativo() && uid == request.auth.uid
@@ -76,13 +85,48 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------- atendimentos
+    // Um chamado = um documento. Os campos de cima são a ida ATUAL; as idas anteriores ficam em "idas" (travadas).
+    function idasAntes() { return resource.data.get('idas', []); }
+    function idasDepois() { return request.resource.data.get('idas', []); }
+    // chamado voltou do setor, ou chegou o dia do agendamento: qualquer técnico ativo encerra a ida atual
+    // (vai para "idas", travada) e abre a próxima no nome dele
+    function novaIda() {
+      return resource.data.get('status', '') in ['ENCAMINHADO', 'FECHADO', '', 'AGENDADO']
+        && idasDepois().size() == idasAntes().size() + 1
+        && idasDepois().hasAll(idasAntes())
+        && idasDepois()[idasAntes().size()].uid == resource.data.uid
+        && idasDepois()[idasAntes().size()].get('inicio', '') == resource.data.get('inicio', '')
+        && idasDepois()[idasAntes().size()].get('status', '') == resource.data.get('status', '')
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.smax == resource.data.smax;
+    }
     match /atendimentos/{id} {
       allow read: if ativo();
       allow create: if ativo() && atendimentoValido(request.resource.data)
         && (request.resource.data.uid == request.auth.uid || admin());
       allow update: if ativo() && atendimentoValido(request.resource.data)
-        && ((resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid) || admin());
-      allow delete: if ativo() && (resource.data.uid == request.auth.uid || admin());
+        && ((resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid && idasDepois() == idasAntes())
+            || admin()
+            || novaIda()
+            // chamado devolvido pelo setor: qualquer técnico pode marcar a ida anterior como DEVOLVIDO
+            || (resource.data.status in ['ENCAMINHADO', 'FECHADO', ''] && request.resource.data.status == 'DEVOLVIDO'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'devolucao', 'historico', 'atualizado_em'])));
+      // técnico só exclui chamado dele que não tem outras idas; o líder exclui qualquer um
+      allow delete: if ativo() && ((resource.data.uid == request.auth.uid && idasAntes().size() == 0) || admin());
+    }
+
+    // ------------------------------------------------------------- configurações (lista de comarcas)
+    function listaComarcasOk() {
+      return request.resource.data.keys().hasOnly(['lista', 'por', 'atualizado_em'])
+        && request.resource.data.lista is list && request.resource.data.lista.size() <= 500;
+    }
+    match /config/{item} {
+      allow read: if ativo();
+      // qualquer técnico ativo pode ACRESCENTAR comarcas; só o líder pode remover
+      allow create: if ativo() && item == 'comarcas' && listaComarcasOk();
+      allow update: if item == 'comarcas' && listaComarcasOk()
+        && (admin() || (ativo() && request.resource.data.lista.hasAll(resource.data.lista)));
+      allow delete: if false;
     }
 
     // qualquer outra coleção: bloqueada
