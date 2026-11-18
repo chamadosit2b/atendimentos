@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261118d';
+import { api } from './firebase.js?v=20261118e';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -14,8 +14,8 @@ const HOME_LOCAL = ['HOME', 'LOCAL'];
 const MOTIVOS_DEVOLUCAO = ['Faltou informação', 'Fora do escopo do setor', 'Resolvido em parte', 'Precisa de atendimento local'];
 const PODE_REABRIR = ['ENCAMINHADO', 'FECHADO', ''];   // '' = salvo sem status
 const fmtAgenda = v => v ? `${fmtData(v)} ${v.slice(11, 16)}` : 'sem horário';
-// agendamento com período: das (agendamento) até (agendamento_fim). Dia inteiro = 08:00 às 18:00. Sem fim = 1 hora.
-const DIA_INTEIRO = ['08:00', '18:00'];
+// agendamento com período: das (agendamento) até (agendamento_fim). Dia inteiro = 09:00 às 17:00. Sem fim = 1 hora.
+const DIA_INTEIRO = ['09:00', '17:00'];
 function somarMin(v, min) { const d = new Date(v); d.setMinutes(d.getMinutes() + min - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); }
 function fimAgenda(a) {
   if (!a.agendamento) return '';
@@ -198,7 +198,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261118d';
+const VERSAO = '20261118e';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -826,7 +826,7 @@ function formAtendimento(a, opts = {}) {
   const salvar = async ov => {
     const f = $('#fa', ov); const d = Object.fromEntries(new FormData(f));
     $$('.seg', f).forEach(sg => { const on = $('button.on', sg); d[sg.dataset.name] = on ? on.dataset.v : ''; });
-    // agendamento: junta data + horários (dia inteiro / júri = 08:00 às 18:00)
+    // agendamento: junta data + horários (dia inteiro / júri = 09:00 às 17:00)
     d.dia_inteiro = !!f.dia_inteiro.checked || !!f.juri.checked; d.juri = !!f.juri.checked;
     if (d.dia_inteiro) { d.ag_ini = DIA_INTEIRO[0]; d.ag_fim = DIA_INTEIRO[1]; }
     d.agendamento = d.ag_data ? `${d.ag_data}T${d.ag_ini || DIA_INTEIRO[0]}` : '';
