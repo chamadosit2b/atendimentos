@@ -32,7 +32,7 @@ a{color:var(--brand-2)}
 label.f{display:block;margin-bottom:12px}
 label.f>span{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:4px}
 label.f>span em{color:var(--danger);font-style:normal}
-input[type=text],input[type=email],input[type=password],input[type=search],input[type=datetime-local],input[type=month],select,textarea{
+input[type=text],input[type=email],input[type=password],input[type=search],input[type=datetime-local],input[type=month],input[type=date],input[type=time],select,textarea{
   width:100%;height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
 textarea{height:auto;min-height:70px;resize:vertical}
 input:focus,select:focus,textarea:focus{border-color:var(--brand-2);box-shadow:0 0 0 3px rgba(44,82,130,.15)}
@@ -352,3 +352,14 @@ tr.marcado{background:#eef4ff !important}
 .ag-acoes{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .tag-reag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--st-ag-bg);color:var(--st-ag);margin-left:6px;vertical-align:1px}
 @media (max-width:640px){.ag-acoes{justify-content:flex-start}}
+
+/* agendamento com período, dia inteiro e júri */
+.chk-ag{display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 10px;font-size:14px}
+.chk-ag label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.chk-ag input{width:16px;height:16px;accent-color:var(--st-ag)}
+.ag-item.andamento{border-left-color:var(--st-fech)}
+.ag-item.andamento .when{color:var(--st-fech)}
+.tag-juri{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:#f3e8ff;color:#7e22ce;margin-left:6px;vertical-align:1px}
+.tag-andamento{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--st-fech-bg);color:var(--st-fech);margin-left:6px;vertical-align:1px}
+
+input:disabled{background:#eef2f7;color:var(--ink-3)}

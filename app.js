@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261118c';
+import { api } from './firebase.js?v=20261118d';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -14,6 +14,16 @@ const HOME_LOCAL = ['HOME', 'LOCAL'];
 const MOTIVOS_DEVOLUCAO = ['Faltou informação', 'Fora do escopo do setor', 'Resolvido em parte', 'Precisa de atendimento local'];
 const PODE_REABRIR = ['ENCAMINHADO', 'FECHADO', ''];   // '' = salvo sem status
 const fmtAgenda = v => v ? `${fmtData(v)} ${v.slice(11, 16)}` : 'sem horário';
+// agendamento com período: das (agendamento) até (agendamento_fim). Dia inteiro = 08:00 às 18:00. Sem fim = 1 hora.
+const DIA_INTEIRO = ['08:00', '18:00'];
+function somarMin(v, min) { const d = new Date(v); d.setMinutes(d.getMinutes() + min - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); }
+function fimAgenda(a) {
+  if (!a.agendamento) return '';
+  if (a.agendamento_fim && a.agendamento_fim > a.agendamento) return a.agendamento_fim;
+  if (a.dia_inteiro) return a.agendamento.slice(0, 11) + DIA_INTEIRO[1];
+  return somarMin(a.agendamento, 60);
+}
+const fmtPeriodo = a => a.agendamento ? `${fmtData(a.agendamento)} ${a.dia_inteiro ? 'dia inteiro' : a.agendamento.slice(11, 16) + (a.agendamento_fim ? '–' + a.agendamento_fim.slice(11, 16) : '')}${a.juri ? ' ⚖️ Júri' : ''}` : 'sem horário';
 const ordinal = n => `${n}ª ida`;
 
 const S = {
@@ -116,9 +126,11 @@ function montarAtendimento(b, uid, tecnico) {
     inicio: normDataHora(b.inicio), termino: normDataHora(b.termino),
     ticket_softplan: s(b.ticket_softplan).slice(0, 60), status: normStatus(b.status),
     encaminhado_para: ENCAMINHADO_PARA.includes(s(b.encaminhado_para).toUpperCase()) ? s(b.encaminhado_para).toUpperCase() : '',
-    home_local: normHomeLocal(b.home_local), agendamento: normDataHora(b.agendamento),
+    home_local: normHomeLocal(b.home_local), agendamento: normDataHora(b.agendamento), agendamento_fim: normDataHora(b.agendamento_fim),
+    dia_inteiro: b.dia_inteiro === true || b.dia_inteiro === 'on', juri: b.juri === true || b.juri === 'on',
     usuario_atendido: s(b.usuario_atendido).slice(0, 120), obs: s(b.obs).slice(0, 2000),
   };
+  if (at.status !== 'AGENDADO') { at.agendamento_fim = ''; at.dia_inteiro = false; at.juri = false; }
   at.data_ref = (at.inicio || at.agendamento || '').slice(0, 10) || hojeISO();
   at.mes = at.data_ref.slice(0, 7);
   return at;
@@ -186,7 +198,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261118c';
+const VERSAO = '20261118d';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -700,7 +712,7 @@ function nomeDe(uid, reserva) { const u = (S.usuarios || []).find(x => x.id === 
 
 // ---------- idas de um chamado
 // Um chamado = um registro. Os campos de cima são a ida ATUAL; as idas anteriores ficam em "idas" (travadas).
-const CAMPOS_IDA = ['uid', 'tecnico', 'inicio', 'termino', 'status', 'encaminhado_para', 'home_local', 'agendamento', 'usuario_atendido', 'obs', 'data_ref', 'mes'];
+const CAMPOS_IDA = ['uid', 'tecnico', 'inicio', 'termino', 'status', 'encaminhado_para', 'home_local', 'agendamento', 'agendamento_fim', 'dia_inteiro', 'juri', 'usuario_atendido', 'obs', 'data_ref', 'mes'];
 const idasFechadas = doc => Array.isArray(doc.idas) ? doc.idas : [];
 const numIdas = doc => idasFechadas(doc).length + 1;
 const parado = ida => { const de = ida.termino || ida.inicio, ate = ida.devolucao && ida.devolucao.em; if (!de || !ate) return null; const m = Math.round((new Date(ate) - new Date(de)) / 60000); return isNaN(m) || m < 0 ? null : m; };
@@ -729,7 +741,7 @@ function blocoIdas(doc, encerrando) {
       <small>${fmtDH(x.inicio) || 'sem horário'}${x.termino ? ' → ' + esc((x.termino || '').slice(11, 16)) : ''} · ${chip(x.status)}${x.encaminhado_para ? ` para <span class="tag">${esc(x.encaminhado_para)}</span>` : ''}</small>
       ${x.obs ? `<small>Obs.: ${esc(x.obs)}</small>` : ''}</div><div class="t">${m !== null ? fmtHM(m) : '—'}<small>${x.status === 'TENT CONTATO' ? 'tentativa' : 'atendimento'}</small></div></div>`; };
   const gap = x => { if (!x.devolucao) { if (x.status !== 'AGENDADO') return ''; const rg = x.reagendamento;
-      return `<div class="setor agenda-gap">📅 <b>Agendado para ${fmtAgenda(x.agendamento)}</b>${x.usuario_atendido ? ' · usuário: ' + esc(x.usuario_atendido) : ''}${rg ? `<br>↻ <b>Reagendado</b> em ${fmtDH(rg.em)} por ${esc(rg.por || '')} para <b>${fmtAgenda(rg.para)}</b>${rg.motivo ? ` · motivo: "${esc(rg.motivo)}"` : ''}` : ''}</div>`; }
+      return `<div class="setor agenda-gap">📅 <b>Agendado para ${fmtPeriodo(x)}</b>${x.usuario_atendido ? ' · usuário: ' + esc(x.usuario_atendido) : ''}${rg ? `<br>↻ <b>Reagendado</b> em ${fmtDH(rg.em)} por ${esc(rg.por || '')} para <b>${fmtAgenda(rg.para)}</b>${rg.motivo ? ` · motivo: "${esc(rg.motivo)}"` : ''}` : ''}</div>`; }
     const p = parado(x), d = x.devolucao || {}; return `<div class="setor">⏳ <b>No setor ${esc(d.setor || x.encaminhado_para || '')}${p !== null ? ' por ' + fmtMin(p) : ''}</b>${d.em ? ` · devolvido em ${fmtDH(d.em)}` : ''} · não conta nas horas do técnico${d.motivo ? `<br>Motivo: <b>"${esc(d.motivo)}"</b>` : ''}</div>`; };
   return `<div class="resumo"><div><span>Status atual</span><b>${chip(doc.status)}</b></div><div><span>Tempo de atendimento</span><b>${fmtHM(tAt)}</b></div>
       <div><span>Parado nos setores</span><b style="color:var(--st-dev)">${tPar ? fmtMin(tPar) : '—'}</b></div><div><span>Idas</span><b>${fech.length + 1}</b></div></div>
@@ -754,9 +766,9 @@ function formAtendimento(a, opts = {}) {
   const body = `<form id="fa" novalidate>
     <div id="e"></div>
     ${reag ? `<fieldset class="devol agend"><legend>↻ Reagendar · ${ordinal(ida)}</legend>
-      <p class="hint" style="margin-top:0">Estava agendado para <b>${fmtAgenda(chamado.agendamento)}</b>${chamado.usuario_atendido ? `, usuário <b>${esc(chamado.usuario_atendido)}</b>` : ''}. Este contato de reagendamento vira uma ida e <b>conta hoje</b> no painel, com o seu horário; o chamado continua AGENDADO para a nova data.</p>
+      <p class="hint" style="margin-top:0">Estava agendado para <b>${fmtPeriodo(chamado)}</b>${chamado.usuario_atendido ? `, usuário <b>${esc(chamado.usuario_atendido)}</b>` : ''}. Este contato de reagendamento vira uma ida e <b>conta hoje</b> no painel, com o seu horário; o chamado continua AGENDADO para a nova data.</p>
       <div class="row">
-        <label class="f"><span>Nova data e hora <em>*</em></span><input type="datetime-local" name="reag_para"></label>
+        <label class="f"><span>Nova data e hora <em>*</em></span><input type="datetime-local" name="reag_para">${chamado.dia_inteiro ? `<div class="hint">${chamado.juri ? '⚖️ Júri · ' : ''}continua dia inteiro (${DIA_INTEIRO[0]} às ${DIA_INTEIRO[1]}); vale só a data.</div>` : ''}</label>
         <label class="f"><span>Motivo do reagendamento <em>*</em></span><input type="text" name="reag_motivo" list="dlReag" maxlength="200" autocomplete="off" placeholder="Ex.: usuário em audiência">
           <datalist id="dlReag"><option value="Usuário não pôde atender"><option value="Usuário ausente / não atendeu"><option value="Aguardando peça ou equipamento"><option value="Pedido do usuário"></datalist></label>
       </div></fieldset>
@@ -790,10 +802,16 @@ function formAtendimento(a, opts = {}) {
     <label class="f"><span>Status</span><div class="seg" data-name="status">${(a.status === 'DEVOLVIDO' ? [...STATUS, 'DEVOLVIDO'] : STATUS).map(x => `<button type="button" data-v="${x}" class="${a.status === x ? 'on' : ''}" ${dis}>${x}</button>`).join('')}</div></label>
     <label class="f"><span>Home / Local</span><div class="seg" data-name="home_local">${HOME_LOCAL.map(x => `<button type="button" data-v="${x}" class="${a.home_local === x ? 'on' : ''}" ${dis}>${x === 'HOME' ? 'HOME (remoto)' : 'LOCAL'}</button>`).join('')}</div></label>
     <fieldset class="ag" id="agBox" ${a.status === 'AGENDADO' ? '' : 'hidden'}><legend>Agendamento</legend>
+      <div class="chk-ag"><label><input type="checkbox" name="dia_inteiro" ${a.dia_inteiro ? 'checked' : ''} ${dis}> Dia inteiro (${DIA_INTEIRO[0]} às ${DIA_INTEIRO[1]})</label><label><input type="checkbox" name="juri" ${a.juri ? 'checked' : ''} ${dis}> ⚖️ Júri</label></div>
       <div class="row">
-        <label class="f"><span>Horário agendado</span><input type="datetime-local" name="agendamento" value="${esc(a.agendamento)}" ${dis}></label>
-        <label class="f"><span>Usuário (quem será atendido)</span><input type="text" name="usuario_atendido" value="${esc(a.usuario_atendido)}" ${dis}></label>
+        <label class="f"><span>Data</span><input type="date" name="ag_data" value="${esc((a.agendamento || '').slice(0, 10))}" ${dis}></label>
+        <div class="row" style="gap:10px">
+          <label class="f"><span>Das</span><input type="time" name="ag_ini" value="${esc((a.agendamento || '').slice(11, 16))}" ${dis}></label>
+          <label class="f"><span>Até</span><input type="time" name="ag_fim" value="${esc((a.agendamento_fim || '').slice(11, 16))}" ${dis}></label>
+        </div>
       </div>
+      <label class="f"><span>Usuário (quem será atendido)</span><input type="text" name="usuario_atendido" value="${esc(a.usuario_atendido)}" ${dis}></label>
+      <div class="hint" style="margin:-4px 0 8px">Só vira "atrasado" depois do horário final. Sem "Até", vale 1 hora depois do início.</div>
     </fieldset>
     <label class="f"><span>Observações ${chamado || fech.length ? 'desta ida' : 'gerais'}</span><textarea name="obs" rows="2" ${dis}>${esc(a.obs)}</textarea></label>
     <fieldset class="hist">
@@ -808,12 +826,19 @@ function formAtendimento(a, opts = {}) {
   const salvar = async ov => {
     const f = $('#fa', ov); const d = Object.fromEntries(new FormData(f));
     $$('.seg', f).forEach(sg => { const on = $('button.on', sg); d[sg.dataset.name] = on ? on.dataset.v : ''; });
-    if (d.status !== 'AGENDADO') { d.agendamento = d.agendamento || ''; }
+    // agendamento: junta data + horários (dia inteiro / júri = 08:00 às 18:00)
+    d.dia_inteiro = !!f.dia_inteiro.checked || !!f.juri.checked; d.juri = !!f.juri.checked;
+    if (d.dia_inteiro) { d.ag_ini = DIA_INTEIRO[0]; d.ag_fim = DIA_INTEIRO[1]; }
+    d.agendamento = d.ag_data ? `${d.ag_data}T${d.ag_ini || DIA_INTEIRO[0]}` : '';
+    d.agendamento_fim = d.ag_data && d.ag_fim ? `${d.ag_data}T${d.ag_fim}` : '';
+    if (d.status === 'AGENDADO' && !reag && d.agendamento_fim && d.agendamento_fim <= d.agendamento) { erroBox($('#e', ov), 'O horário "Até" precisa ser depois do "Das".'); ov.scrollTop = 0; return false; }
     if (reag) {
       d.reag_motivo = s(d.reag_motivo).slice(0, 200); d.reag_para = normDataHora(d.reag_para);
       if (!d.reag_para) { erroBox($('#e', ov), 'Informe a nova data e hora do agendamento.'); ov.scrollTop = 0; f.reag_para.focus(); return false; }
       if (!d.reag_motivo) { erroBox($('#e', ov), 'Escreva o motivo do reagendamento.'); ov.scrollTop = 0; f.reag_motivo.focus(); return false; }
-      d.status = 'AGENDADO'; d.agendamento = d.reag_para;
+      d.status = 'AGENDADO'; d.juri = !!chamado.juri; d.dia_inteiro = !!chamado.dia_inteiro;
+      if (d.dia_inteiro) { d.agendamento = d.reag_para.slice(0, 11) + DIA_INTEIRO[0]; d.agendamento_fim = d.reag_para.slice(0, 11) + DIA_INTEIRO[1]; }
+      else { const dur = chamado.agendamento ? Math.max(15, Math.round((new Date(fimAgenda(chamado)) - new Date(chamado.agendamento)) / 60000)) : 60; d.agendamento = d.reag_para; d.agendamento_fim = somarMin(d.reag_para, dur); }
     }
     if (chamado && !agend && !reag) { d.dev_motivo = s(d.dev_motivo).slice(0, 200); if (!d.dev_motivo) { erroBox($('#e', ov), 'Escreva o motivo da devolução.'); ov.scrollTop = 0; f.dev_motivo.focus(); return false; } }
     const uid = admin && d.uid ? d.uid : (chamado ? S.perfil.id : (a.uid || S.perfil.id));
@@ -903,10 +928,13 @@ function formAtendimento(a, opts = {}) {
       if (sg.dataset.name === 'status') {
         const v = $('button.on', sg)?.dataset.v;
         $('#agBox', ov).hidden = v !== 'AGENDADO';
-        if (v === 'AGENDADO') f.agendamento.focus();
+        if (v === 'AGENDADO') f.ag_data.focus();
         if (v === 'FECHADO' && !f.termino.value) { f.termino.value = agoraLocal(); atualizaDur(); }
       }
     }));
+    const ligaDia = () => { const on = f.dia_inteiro.checked || f.juri.checked; if (f.juri.checked) f.dia_inteiro.checked = true;
+      if (on) { f.ag_ini.value = DIA_INTEIRO[0]; f.ag_fim.value = DIA_INTEIRO[1]; } if (podeEditar) { f.ag_ini.disabled = f.ag_fim.disabled = on; } };
+    f.dia_inteiro.onchange = () => { if (!f.dia_inteiro.checked) f.juri.checked = false; ligaDia(); }; f.juri.onchange = ligaDia; if (f.dia_inteiro.checked || f.juri.checked) ligaDia();
     if (reag) { $('#agBox', ov).hidden = true; $$('.seg[data-name=status] button', f).forEach(b => b.disabled = true); f.reag_para.focus(); }   // continua AGENDADO; a nova data fica no quadro de cima
     else if (chamado && !agend) f.dev_motivo.focus();
   });
@@ -993,12 +1021,12 @@ async function telaAgenda(main) {
   if (!lista.length) { $('#lista').innerHTML = `<div class="card"><div class="empty">Nenhum atendimento agendado no momento.</div></div>`; return; }
   const agora = agoraLocal();
   $('#lista').innerHTML = `<div class="agenda">${lista.map(a => {
-    const late = a.agendamento && a.agendamento < agora;
-    const [d, t] = (a.agendamento || '').split('T');
+    const fim = fimAgenda(a), late = !!a.agendamento && fim < agora, andamento = !!a.agendamento && a.agendamento <= agora && agora <= fim;
+    const d = (a.agendamento || '').slice(0, 10), t = a.agendamento ? `${a.agendamento.slice(11, 16)}–${fim.slice(11, 16)}` : '';
     const nReag = idasFechadas(a).filter(x => x.reagendamento).length;
-    return `<div class="ag-item ${late ? 'late' : ''}" data-id="${esc(a.id)}">
-      <div class="when"><b>${t || '--:--'}</b><small>${d ? fmtData(d) : 'sem horário'}${late ? ' · atrasado' : ''}</small></div>
-      <div class="what"><b>SMAX ${esc(a.smax)} · ${esc(a.comarca)}${nReag ? ` <span class="tag-reag" title="Quantas vezes já foi reagendado">↻ reagendado ${nReag}×</span>` : ''}</b><small>${esc(a.usuario_atendido || 'usuário não informado')}${a.obs ? ' — ' + esc(a.obs) : ''}${isAdmin() ? ' · ' + esc(nomeDe(a.uid, a.tecnico)) : ''}</small></div>
+    return `<div class="ag-item ${late ? 'late' : andamento ? 'andamento' : ''}" data-id="${esc(a.id)}">
+      <div class="when"><b>${t || '--:--'}</b><small>${d ? fmtData(d) : 'sem horário'}${a.dia_inteiro ? ' · dia inteiro' : ''}${late ? ' · atrasado' : ''}</small></div>
+      <div class="what"><b>SMAX ${esc(a.smax)} · ${esc(a.comarca)}${a.juri ? ' <span class="tag-juri">⚖️ Júri</span>' : ''}${andamento ? ' <span class="tag-andamento">🟢 em andamento</span>' : ''}${nReag ? ` <span class="tag-reag" title="Quantas vezes já foi reagendado">↻ reagendado ${nReag}×</span>` : ''}</b><small>${esc(a.usuario_atendido || 'usuário não informado')}${a.obs ? ' — ' + esc(a.obs) : ''}${isAdmin() ? ' · ' + esc(nomeDe(a.uid, a.tecnico)) : ''}</small></div>
       <div class="ag-acoes"><button type="button" class="btn sm" data-reag="${esc(a.id)}" title="O usuário não pôde: marcar nova data">↻ Reagendar</button><button type="button" class="btn sm primary" data-atender="${esc(a.id)}" title="Registrar o atendimento">▶ Atender</button></div></div>`;
   }).join('')}</div>`;
   const doc = id => lista.find(a => a.id === id);
