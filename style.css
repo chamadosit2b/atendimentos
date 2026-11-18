@@ -347,3 +347,8 @@ tr.marcado{background:#eef4ff !important}
 .acoes-sel[hidden]{display:none}
 .lista-excluir{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;background:var(--surface-2)}
 .lista-excluir div{padding:4px 0;border-bottom:1px dashed var(--line)}.lista-excluir div:last-child{border:0}
+
+/* agenda: botões direto no cartão */
+.ag-acoes{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tag-reag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--st-ag-bg);color:var(--st-ag);margin-left:6px;vertical-align:1px}
+@media (max-width:640px){.ag-acoes{justify-content:flex-start}}

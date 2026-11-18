@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261118b';
+import { api } from './firebase.js?v=20261118c';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -186,7 +186,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261118b';
+const VERSAO = '20261118c';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -995,12 +995,16 @@ async function telaAgenda(main) {
   $('#lista').innerHTML = `<div class="agenda">${lista.map(a => {
     const late = a.agendamento && a.agendamento < agora;
     const [d, t] = (a.agendamento || '').split('T');
+    const nReag = idasFechadas(a).filter(x => x.reagendamento).length;
     return `<div class="ag-item ${late ? 'late' : ''}" data-id="${esc(a.id)}">
       <div class="when"><b>${t || '--:--'}</b><small>${d ? fmtData(d) : 'sem horário'}${late ? ' · atrasado' : ''}</small></div>
-      <div class="what"><b>SMAX ${esc(a.smax)} · ${esc(a.comarca)}</b><small>${esc(a.usuario_atendido || 'usuário não informado')}${a.obs ? ' — ' + esc(a.obs) : ''}</small></div>
-      <div class="muted">${isAdmin() ? esc(nomeDe(a.uid, a.tecnico)) : ''}</div></div>`;
+      <div class="what"><b>SMAX ${esc(a.smax)} · ${esc(a.comarca)}${nReag ? ` <span class="tag-reag" title="Quantas vezes já foi reagendado">↻ reagendado ${nReag}×</span>` : ''}</b><small>${esc(a.usuario_atendido || 'usuário não informado')}${a.obs ? ' — ' + esc(a.obs) : ''}${isAdmin() ? ' · ' + esc(nomeDe(a.uid, a.tecnico)) : ''}</small></div>
+      <div class="ag-acoes"><button type="button" class="btn sm" data-reag="${esc(a.id)}" title="O usuário não pôde: marcar nova data">↻ Reagendar</button><button type="button" class="btn sm primary" data-atender="${esc(a.id)}" title="Registrar o atendimento">▶ Atender</button></div></div>`;
   }).join('')}</div>`;
-  $$('.ag-item').forEach(el => el.onclick = () => formAtendimento(lista.find(a => a.id === el.dataset.id)));
+  const doc = id => lista.find(a => a.id === id);
+  $$('.ag-item').forEach(el => el.onclick = () => formAtendimento(doc(el.dataset.id)));
+  $$('.ag-item [data-reag]').forEach(b => b.onclick = e => { e.stopPropagation(); formAtendimento(doc(b.dataset.reag), { novaIda: true, reagendar: true }); });
+  $$('.ag-item [data-atender]').forEach(b => b.onclick = e => { e.stopPropagation(); formAtendimento(doc(b.dataset.atender), { novaIda: true, agendado: true }); });
 }
 
 // --------------------------------------------------------------- Painel
