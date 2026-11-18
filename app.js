@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261116';
+import { api } from './firebase.js?v=20261118b';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -186,7 +186,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261116';
+const VERSAO = '20261118b';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -728,7 +728,8 @@ function blocoIdas(doc, encerrando) {
       <b>${esc(nomeDe(x.uid, x.tecnico))}</b>${x.home_local ? ' · ' + esc(x.home_local) : ''} <span class="lock">${encerrando && x === doc ? '🔒 vai ser encerrada agora' : atual ? '✏️ ida atual (editar abaixo)' : '🔒 encerrada'}</span>
       <small>${fmtDH(x.inicio) || 'sem horário'}${x.termino ? ' → ' + esc((x.termino || '').slice(11, 16)) : ''} · ${chip(x.status)}${x.encaminhado_para ? ` para <span class="tag">${esc(x.encaminhado_para)}</span>` : ''}</small>
       ${x.obs ? `<small>Obs.: ${esc(x.obs)}</small>` : ''}</div><div class="t">${m !== null ? fmtHM(m) : '—'}<small>${x.status === 'TENT CONTATO' ? 'tentativa' : 'atendimento'}</small></div></div>`; };
-  const gap = x => { if (!x.devolucao) return x.status === 'AGENDADO' ? `<div class="setor agenda-gap">📅 <b>Agendado para ${fmtAgenda(x.agendamento)}</b>${x.usuario_atendido ? ' · usuário: ' + esc(x.usuario_atendido) : ''}</div>` : '';
+  const gap = x => { if (!x.devolucao) { if (x.status !== 'AGENDADO') return ''; const rg = x.reagendamento;
+      return `<div class="setor agenda-gap">📅 <b>Agendado para ${fmtAgenda(x.agendamento)}</b>${x.usuario_atendido ? ' · usuário: ' + esc(x.usuario_atendido) : ''}${rg ? `<br>↻ <b>Reagendado</b> em ${fmtDH(rg.em)} por ${esc(rg.por || '')} para <b>${fmtAgenda(rg.para)}</b>${rg.motivo ? ` · motivo: "${esc(rg.motivo)}"` : ''}` : ''}</div>`; }
     const p = parado(x), d = x.devolucao || {}; return `<div class="setor">⏳ <b>No setor ${esc(d.setor || x.encaminhado_para || '')}${p !== null ? ' por ' + fmtMin(p) : ''}</b>${d.em ? ` · devolvido em ${fmtDH(d.em)}` : ''} · não conta nas horas do técnico${d.motivo ? `<br>Motivo: <b>"${esc(d.motivo)}"</b>` : ''}</div>`; };
   return `<div class="resumo"><div><span>Status atual</span><b>${chip(doc.status)}</b></div><div><span>Tempo de atendimento</span><b>${fmtHM(tAt)}</b></div>
       <div><span>Parado nos setores</span><b style="color:var(--st-dev)">${tPar ? fmtMin(tPar) : '—'}</b></div><div><span>Idas</span><b>${fech.length + 1}</b></div></div>
@@ -739,9 +740,10 @@ function blocoIdas(doc, encerrando) {
 function formAtendimento(a, opts = {}) {
   const chamado = opts.novaIda ? a : null;   // chamado que voltou do setor (ou agendamento a atender): vai ganhar uma ida nova
   const agend = !!(chamado && opts.agendado);
+  const reag = !!(chamado && opts.reagendar);   // reagendar: o contato de hoje vira uma ida (conta hoje) e o chamado fica agendado para a nova data
   const novo = !a;
   const fech = chamado ? idasFechadas(chamado) : (a ? idasFechadas(a) : []);
-  if (chamado) a = { inicio: agend ? (chamado.agendamento || agoraLocal()) : agoraLocal(), status: '', home_local: agend ? chamado.home_local : '', uid: S.perfil.id, smax: chamado.smax, comarca: chamado.comarca, ticket_softplan: chamado.ticket_softplan, usuario_atendido: chamado.usuario_atendido };
+  if (chamado) a = { inicio: agend ? (chamado.agendamento || agoraLocal()) : agoraLocal(), status: reag ? 'AGENDADO' : '', home_local: agend || reag ? chamado.home_local : '', uid: S.perfil.id, smax: chamado.smax, comarca: chamado.comarca, ticket_softplan: chamado.ticket_softplan, usuario_atendido: chamado.usuario_atendido };
   a = a || { inicio: agoraLocal(), status: '', home_local: '', uid: S.perfil.id };
   const ida = chamado ? fech.length + 2 : fech.length + (a.ida || 1);
   const admin = isAdmin();
@@ -751,7 +753,14 @@ function formAtendimento(a, opts = {}) {
   const comarcas = listaComarcas().length ? listaComarcas() : [...new Set((S.comarcas || []).map(tituloComarca))].sort();
   const body = `<form id="fa" novalidate>
     <div id="e"></div>
-    ${agend ? `<fieldset class="devol agend"><legend>Atender agendamento · ${ordinal(ida)}</legend>
+    ${reag ? `<fieldset class="devol agend"><legend>↻ Reagendar · ${ordinal(ida)}</legend>
+      <p class="hint" style="margin-top:0">Estava agendado para <b>${fmtAgenda(chamado.agendamento)}</b>${chamado.usuario_atendido ? `, usuário <b>${esc(chamado.usuario_atendido)}</b>` : ''}. Este contato de reagendamento vira uma ida e <b>conta hoje</b> no painel, com o seu horário; o chamado continua AGENDADO para a nova data.</p>
+      <div class="row">
+        <label class="f"><span>Nova data e hora <em>*</em></span><input type="datetime-local" name="reag_para"></label>
+        <label class="f"><span>Motivo do reagendamento <em>*</em></span><input type="text" name="reag_motivo" list="dlReag" maxlength="200" autocomplete="off" placeholder="Ex.: usuário em audiência">
+          <datalist id="dlReag"><option value="Usuário não pôde atender"><option value="Usuário ausente / não atendeu"><option value="Aguardando peça ou equipamento"><option value="Pedido do usuário"></datalist></label>
+      </div></fieldset>
+      ${blocoIdas(chamado, true)}<div class="sec">Contato de reagendamento (${ordinal(ida)})</div>` : agend ? `<fieldset class="devol agend"><legend>Atender agendamento · ${ordinal(ida)}</legend>
       <p class="hint" style="margin:0">Agendado para <b>${fmtAgenda(chamado.agendamento)}</b>${chamado.usuario_atendido ? `, usuário <b>${esc(chamado.usuario_atendido)}</b>` : ''}. A ida de ${fmtData(chamado.data_ref)} (${esc(nomeDe(chamado.uid, chamado.tecnico))}) fica encerrada como <b>AGENDADO</b> e continua contando em ${esc(nomeMes(chamado.mes))}. Esta nova ida conta no mês em que for atendida, com o horário real.</p></fieldset>
       ${blocoIdas(chamado, true)}<div class="sec">Atendimento (${ordinal(ida)})</div>` : chamado ? `<fieldset class="devol"><legend>Chamado voltou do setor · ${ordinal(ida)}</legend>
       <p class="hint" style="margin-top:0">A ida atual (${fmtData(chamado.data_ref)}, ${esc(nomeDe(chamado.uid, chamado.tecnico))}, ${esc(chamado.status || 'sem status')}${chamado.encaminhado_para ? ' para ' + esc(chamado.encaminhado_para) : ''}) vai ser encerrada e travada. Abaixo você registra a <b>${ordinal(ida)}</b>: conta como mais um atendimento, com o seu horário, no mesmo chamado.</p>
@@ -800,7 +809,13 @@ function formAtendimento(a, opts = {}) {
     const f = $('#fa', ov); const d = Object.fromEntries(new FormData(f));
     $$('.seg', f).forEach(sg => { const on = $('button.on', sg); d[sg.dataset.name] = on ? on.dataset.v : ''; });
     if (d.status !== 'AGENDADO') { d.agendamento = d.agendamento || ''; }
-    if (chamado && !agend) { d.dev_motivo = s(d.dev_motivo).slice(0, 200); if (!d.dev_motivo) { erroBox($('#e', ov), 'Escreva o motivo da devolução.'); ov.scrollTop = 0; f.dev_motivo.focus(); return false; } }
+    if (reag) {
+      d.reag_motivo = s(d.reag_motivo).slice(0, 200); d.reag_para = normDataHora(d.reag_para);
+      if (!d.reag_para) { erroBox($('#e', ov), 'Informe a nova data e hora do agendamento.'); ov.scrollTop = 0; f.reag_para.focus(); return false; }
+      if (!d.reag_motivo) { erroBox($('#e', ov), 'Escreva o motivo do reagendamento.'); ov.scrollTop = 0; f.reag_motivo.focus(); return false; }
+      d.status = 'AGENDADO'; d.agendamento = d.reag_para;
+    }
+    if (chamado && !agend && !reag) { d.dev_motivo = s(d.dev_motivo).slice(0, 200); if (!d.dev_motivo) { erroBox($('#e', ov), 'Escreva o motivo da devolução.'); ov.scrollTop = 0; f.dev_motivo.focus(); return false; } }
     const uid = admin && d.uid ? d.uid : (chamado ? S.perfil.id : (a.uid || S.perfil.id));
     const at = montarAtendimento(d, uid, nomeDe(uid, S.perfil.nome));
     if (chamado || fech.length) at.smax = (chamado || a).smax;
@@ -822,9 +837,10 @@ function formAtendimento(a, opts = {}) {
     if (chamado) {
       // encerra a ida atual (fica travada) e abre a nova
       const enc = {}; CAMPOS_IDA.forEach(k => { enc[k] = chamado[k] ?? ''; });
-      if (!agend) enc.devolucao = { setor: d.dev_setor, motivo: d.dev_motivo, em: normDataHora(d.dev_em) || agora, por: S.perfil.nome };
+      if (reag) enc.reagendamento = { motivo: d.reag_motivo, para: d.reag_para, em: agora, por: S.perfil.nome };
+      else if (!agend) enc.devolucao = { setor: d.dev_setor, motivo: d.dev_motivo, em: normDataHora(d.dev_em) || agora, por: S.perfil.nome };
       idas = [...fech, enc];
-      hist.push({ em: agora, por: S.perfil.nome, de: chamado.status || '', para: at.status, obs: [agend ? `${ordinal(ida)} — atendimento do agendamento de ${fmtAgenda(chamado.agendamento)}` : `${ordinal(ida)} — devolvido por ${d.dev_setor} (${d.dev_motivo})`, obsAlt].filter(Boolean).join('. ') });
+      hist.push({ em: agora, por: S.perfil.nome, de: chamado.status || '', para: at.status, obs: [reag ? `${ordinal(ida)} — reagendado de ${fmtAgenda(chamado.agendamento)} para ${fmtAgenda(d.reag_para)} (${d.reag_motivo})` : agend ? `${ordinal(ida)} — atendimento do agendamento de ${fmtAgenda(chamado.agendamento)}` : `${ordinal(ida)} — devolvido por ${d.dev_setor} (${d.dev_motivo})`, obsAlt].filter(Boolean).join('. ') });
     } else if (novo) hist.push({ em: agora, por: S.perfil.nome, de: '', para: at.status, obs: obsAlt });
     else if (at.status !== (a.status || '') || obsAlt) hist.push({ em: agora, por: S.perfil.nome, de: a.status || '', para: at.status, obs: obsAlt });
     at.historico = hist.slice(-300);
@@ -832,7 +848,7 @@ function formAtendimento(a, opts = {}) {
     at.meses = mesesDe(idas, at); at.uids = uidsDe(idas, at);
     try {
       await api.salvarAtendimento(novo ? null : (chamado || a).id, at);
-      toast(agend ? `Agendamento atendido (${ordinal(ida)}) no chamado ${at.smax}.` : chamado ? `${ordinal(ida)} registrada no chamado ${at.smax}.` : novo ? 'Atendimento registrado.' : 'Atendimento atualizado.');
+      toast(reag ? `Reagendado para ${fmtAgenda(d.reag_para)} (${ordinal(ida)}).` : agend ? `Agendamento atendido (${ordinal(ida)}) no chamado ${at.smax}.` : chamado ? `${ordinal(ida)} registrada no chamado ${at.smax}.` : novo ? 'Atendimento registrado.' : 'Atendimento atualizado.');
       if (at.mes !== S.mes && novo) toast(`Registrado em ${nomeMes(at.mes)} (data do início).`);
       S.comarcas = [at.comarca, ...(S.comarcas || [])];
       refresh(); return true;
@@ -852,10 +868,12 @@ function formAtendimento(a, opts = {}) {
     setTimeout(() => formAtendimento(ult, { novaIda: true }), 0); return true;
   } });
   // agendamento: quando chegar o dia, o atendimento vira a próxima ida (conta no mês em que foi feito)
-  if (!novo && !chamado && a.status === 'AGENDADO') botoes.push({ t: '▶ Atender agendamento', fn: async () => { setTimeout(() => formAtendimento(a, { novaIda: true, agendado: true }), 0); return true; } });
+  if (!novo && !chamado && a.status === 'AGENDADO') botoes.push(
+    { t: '↻ Reagendar', fn: async () => { setTimeout(() => formAtendimento(a, { novaIda: true, reagendar: true }), 0); return true; } },
+    { t: '▶ Atender agendamento', fn: async () => { setTimeout(() => formAtendimento(a, { novaIda: true, agendado: true }), 0); return true; } });
   if (podeEditar) botoes.push({ t: 'Cancelar' }, { t: novo ? 'Registrar' : chamado ? `Registrar ${ordinal(ida)}` : 'Salvar', primary: true, fn: salvar });
   else botoes.push({ t: 'Fechar', primary: true });
-  modal(agend ? `Chamado ${esc(chamado.smax)} · atender agendamento` : chamado ? `Chamado ${esc(chamado.smax)} · nova ida` : novo ? 'Novo atendimento' : `Chamado ${esc(a.smax || '')}${fech.length ? ` <span class="idas">↺ ${fech.length + 1} idas</span>` : ''}`, body, botoes, chamado || fech.length ? 'lg' : '', ov => {
+  modal(reag ? `Chamado ${esc(chamado.smax)} · reagendar` : agend ? `Chamado ${esc(chamado.smax)} · atender agendamento` : chamado ? `Chamado ${esc(chamado.smax)} · nova ida` : novo ? 'Novo atendimento' : `Chamado ${esc(a.smax || '')}${fech.length ? ` <span class="idas">↺ ${fech.length + 1} idas</span>` : ''}`, body, botoes, chamado || fech.length ? 'lg' : '', ov => {
     const f = $('#fa', ov);
     // corrige a comarca para o nome oficial ao sair do campo
     if (podeEditar) f.comarca.addEventListener('change', () => {
@@ -889,7 +907,8 @@ function formAtendimento(a, opts = {}) {
         if (v === 'FECHADO' && !f.termino.value) { f.termino.value = agoraLocal(); atualizaDur(); }
       }
     }));
-    if (chamado && !agend) f.dev_motivo.focus();
+    if (reag) { $('#agBox', ov).hidden = true; $$('.seg[data-name=status] button', f).forEach(b => b.disabled = true); f.reag_para.focus(); }   // continua AGENDADO; a nova data fica no quadro de cima
+    else if (chamado && !agend) f.dev_motivo.focus();
   });
 }
 function avisoComarca(el, v, ov) {
@@ -947,10 +966,11 @@ function avisoDuplicado(el, dup, ov) {
   el.innerHTML = `<div class="err">O chamado SMAX <b>${esc(dup.smax)}</b> já existe: ida atual de <b>${esc(nomeDe(dup.uid, dup.tecnico))}</b>
     em ${fmtData(dup.data_ref)} (${esc(dup.status || 'sem status')}${dup.encaminhado_para ? ' para ' + esc(dup.encaminhado_para) : ''}${n > 1 ? ', ' + ordinal(n) : ''}).
     ${dup.status === 'AGENDADO' ? `Está agendado para <b>${fmtAgenda(dup.agendamento)}</b>: use <b>Atender agendamento</b> para registrar o atendimento no mesmo chamado.` : reabre ? 'Se o setor devolveu o chamado, registre uma <b>nova ida</b> nele: continua sendo o mesmo chamado e a nova ida conta como mais um atendimento.' : 'Atualize o registro existente em vez de criar outro.'}
-    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${reabre ? '<button type="button" class="btn sm primary" id="reabrirDup">↺ Ele voltou: nova ida</button>' : ''}${dup.status === 'AGENDADO' ? '<button type="button" class="btn sm primary" id="atenderDup">▶ Atender agendamento</button>' : ''}<button type="button" class="btn sm" id="abrirDup">Abrir o chamado</button></div></div>`;
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${reabre ? '<button type="button" class="btn sm primary" id="reabrirDup">↺ Ele voltou: nova ida</button>' : ''}${dup.status === 'AGENDADO' ? '<button type="button" class="btn sm primary" id="atenderDup">▶ Atender agendamento</button><button type="button" class="btn sm" id="reagDup">↻ Reagendar</button>' : ''}<button type="button" class="btn sm" id="abrirDup">Abrir o chamado</button></div></div>`;
   $('#abrirDup', el).onclick = () => { ov.remove(); formAtendimento(dup); };
   if (reabre) $('#reabrirDup', el).onclick = () => { ov.remove(); formAtendimento(dup, { novaIda: true }); };
   if ($('#atenderDup', el)) $('#atenderDup', el).onclick = () => { ov.remove(); formAtendimento(dup, { novaIda: true, agendado: true }); };
+  if ($('#reagDup', el)) $('#reagDup', el).onclick = () => { ov.remove(); formAtendimento(dup, { novaIda: true, reagendar: true }); };
 }
 // linha do tempo do histórico (mais recente primeiro)
 function linhaDoTempo(h) {
