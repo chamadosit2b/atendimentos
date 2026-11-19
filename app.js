@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261118e';
+import { api } from './firebase.js?v=20261119';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -13,6 +13,11 @@ const HOME_LOCAL = ['HOME', 'LOCAL'];
 // DEVOLVIDO: o setor devolveu o chamado e ele foi reaberto em uma nova "ida" (registro novo com o mesmo SMAX)
 const MOTIVOS_DEVOLUCAO = ['Faltou informação', 'Fora do escopo do setor', 'Resolvido em parte', 'Precisa de atendimento local'];
 const PODE_REABRIR = ['ENCAMINHADO', 'FECHADO', ''];   // '' = salvo sem status
+// observação mais recente do chamado: a última escrita no histórico (ou a antiga "Observações gerais")
+// (ignora o texto automático das idas, ex.: "2ª ida — reagendado de …", e fica só com o que a pessoa escreveu)
+const obsDigitada = t => String(t || '').replace(/^\d+ª ida — [^.]*\)?\.?\s*/, '').trim();
+const ultimaObs = a => { const h = (Array.isArray(a.historico) ? a.historico : []).map(e => obsDigitada(e.obs)).filter(Boolean); return h.length ? h[h.length - 1] : (a.obs || ''); };
+const textoObs = a => [a.obs, ...(Array.isArray(a.historico) ? a.historico : []).map(e => e.obs)].filter(Boolean).join(' ');
 const fmtAgenda = v => v ? `${fmtData(v)} ${v.slice(11, 16)}` : 'sem horário';
 // agendamento com período: das (agendamento) até (agendamento_fim). Dia inteiro = 09:00 às 17:00. Sem fim = 1 hora.
 const DIA_INTEIRO = ['09:00', '17:00'];
@@ -198,7 +203,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261118e';
+const VERSAO = '20261119';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -632,7 +637,7 @@ async function telaAtendimentos(main) {
     let lista = base;
     if (S.filtros.dia) lista = lista.filter(a => explodir([a]).some(x => x.data_ref === S.filtros.dia));
     if (S.filtros.status) lista = lista.filter(a => a.status === S.filtros.status);
-    if (q) lista = lista.filter(a => [a.smax, a.comarca, a.ticket_softplan, a.usuario_atendido, a.obs].some(v => (v || '').toLowerCase().includes(q)));
+    if (q) lista = lista.filter(a => [a.smax, a.comarca, a.ticket_softplan, a.usuario_atendido, textoObs(a)].some(v => (v || '').toLowerCase().includes(q)));
     const c = k => lista.filter(a => a.status === k).length;
     $('#kpis').innerHTML = `
       <div class="kpi enc"><span>Encaminhado</span><b>${c('ENCAMINHADO')}</b></div>
@@ -813,10 +818,10 @@ function formAtendimento(a, opts = {}) {
       <label class="f"><span>Usuário (quem será atendido)</span><input type="text" name="usuario_atendido" value="${esc(a.usuario_atendido)}" ${dis}></label>
       <div class="hint" style="margin:-4px 0 8px">Só vira "atrasado" depois do horário final. Sem "Até", vale 1 hora depois do início.</div>
     </fieldset>
-    <label class="f"><span>Observações ${chamado || fech.length ? 'desta ida' : 'gerais'}</span><textarea name="obs" rows="2" ${dis}>${esc(a.obs)}</textarea></label>
+    ${!novo && !chamado && a.obs ? `<div class="obs-antiga"><span>Observação registrada antes</span>${esc(a.obs)}</div>` : ''}
     <fieldset class="hist">
       <legend>Histórico de status</legend>
-      ${podeEditar ? `<label class="f"><span>${novo || chamado ? 'Observação inicial (opcional)' : 'Observação desta alteração'}</span>
+      ${podeEditar ? `<label class="f"><span>${novo || chamado ? 'Observação (opcional)' : 'Observação desta alteração'}</span>
         <textarea name="obs_alteracao" rows="2" placeholder="${novo ? 'Ex.: usuário relatou que a impressora não liga.' : 'Ex.: usuário não atendeu, liguei no ramal 2; agendado para amanhã às 9h.'}"></textarea>
         <div class="hint">Fica registrado no histórico com data, hora e o seu nome. ${novo ? '' : 'Mudou o status? Explique aqui o motivo.'}</div></label>` : ''}
       ${linhaDoTempo((chamado || a).historico)}
@@ -842,6 +847,7 @@ function formAtendimento(a, opts = {}) {
     }
     if (chamado && !agend && !reag) { d.dev_motivo = s(d.dev_motivo).slice(0, 200); if (!d.dev_motivo) { erroBox($('#e', ov), 'Escreva o motivo da devolução.'); ov.scrollTop = 0; f.dev_motivo.focus(); return false; } }
     const uid = admin && d.uid ? d.uid : (chamado ? S.perfil.id : (a.uid || S.perfil.id));
+    d.obs = novo || chamado ? '' : (a.obs || '');
     const at = montarAtendimento(d, uid, nomeDe(uid, S.perfil.nome));
     if (chamado || fech.length) at.smax = (chamado || a).smax;
     const er = validar(at); if (er) { erroBox($('#e', ov), er); ov.scrollTop = 0; return false; }
@@ -1026,7 +1032,7 @@ async function telaAgenda(main) {
     const nReag = idasFechadas(a).filter(x => x.reagendamento).length;
     return `<div class="ag-item ${late ? 'late' : andamento ? 'andamento' : ''}" data-id="${esc(a.id)}">
       <div class="when"><b>${t || '--:--'}</b><small>${d ? fmtData(d) : 'sem horário'}${a.dia_inteiro ? ' · dia inteiro' : ''}${late ? ' · atrasado' : ''}</small></div>
-      <div class="what"><b>SMAX ${esc(a.smax)} · ${esc(a.comarca)}${a.juri ? ' <span class="tag-juri">⚖️ Júri</span>' : ''}${andamento ? ' <span class="tag-andamento">🟢 em andamento</span>' : ''}${nReag ? ` <span class="tag-reag" title="Quantas vezes já foi reagendado">↻ reagendado ${nReag}×</span>` : ''}</b><small>${esc(a.usuario_atendido || 'usuário não informado')}${a.obs ? ' — ' + esc(a.obs) : ''}${isAdmin() ? ' · ' + esc(nomeDe(a.uid, a.tecnico)) : ''}</small></div>
+      <div class="what"><b>SMAX ${esc(a.smax)} · ${esc(a.comarca)}${a.juri ? ' <span class="tag-juri">⚖️ Júri</span>' : ''}${andamento ? ' <span class="tag-andamento">🟢 em andamento</span>' : ''}${nReag ? ` <span class="tag-reag" title="Quantas vezes já foi reagendado">↻ reagendado ${nReag}×</span>` : ''}</b><small>${esc(a.usuario_atendido || 'usuário não informado')}${ultimaObs(a) ? ' — ' + esc(ultimaObs(a)) : ''}${isAdmin() ? ' · ' + esc(nomeDe(a.uid, a.tecnico)) : ''}</small></div>
       <div class="ag-acoes"><button type="button" class="btn sm" data-reag="${esc(a.id)}" title="O usuário não pôde: marcar nova data">↻ Reagendar</button><button type="button" class="btn sm primary" data-atender="${esc(a.id)}" title="Registrar o atendimento">▶ Atender</button></div></div>`;
   }).join('')}</div>`;
   const doc = id => lista.find(a => a.id === id);
@@ -1340,7 +1346,7 @@ async function exportarExcel() {
       if (fim) { w.getCell(r, 4).value = fim; w.getCell(r, 4).numFmt = 'dd/mm/yyyy hh:mm'; }
       if (ini && fim) { w.getCell(r, 5).value = { formula: `D${r}-C${r}` }; w.getCell(r, 5).numFmt = '[h]:mm'; }
       w.getCell(r, 6).value = a.ticket_softplan; w.getCell(r, 7).value = a._fechada && a.devolucao ? `DEVOLVIDO (${a._statusOrig || 'sem status'}) — ${a.devolucao.motivo || ''}` : a.status; w.getCell(r, 8).value = a.encaminhado_para;
-      w.getCell(r, 9).value = a.home_local; w.getCell(r, 10).value = a.usuario_atendido; w.getCell(r, 11).value = a.obs;
+      w.getCell(r, 9).value = a.home_local; w.getCell(r, 10).value = a.usuario_atendido; w.getCell(r, 11).value = a._fechada ? (a.obs || '') : ultimaObs(a);
       w.getCell(r, 12).value = (a.historico || []).map(e => `${fmtData(e.em)} ${(e.em || '').slice(11, 16)} ${e.por || ''}: ${e.de && e.de !== e.para ? e.de + ' → ' : ''}${e.para || ''}${e.obs ? ' — ' + e.obs : ''}`).join('\n');
       w.getCell(r, 12).alignment = { wrapText: true, vertical: 'top' };
       for (let c = 1; c <= 12; c++) w.getCell(r, c).border = borda;
@@ -1352,7 +1358,7 @@ async function exportarExcel() {
     ['Horário', 'SMAX', 'Usuário', 'Obs'].forEach((h, i) => { const c = w.getCell(2, 19 + i); c.value = h; cab(c); });
     meus.filter(a => a.status === 'AGENDADO').forEach((a, i) => {
       const d = toDate(a.agendamento); if (d) { w.getCell(3 + i, 19).value = d; w.getCell(3 + i, 19).numFmt = 'dd/mm hh:mm'; }
-      w.getCell(3 + i, 20).value = a.smax; w.getCell(3 + i, 21).value = a.usuario_atendido; w.getCell(3 + i, 22).value = a.obs;
+      w.getCell(3 + i, 20).value = a.smax; w.getCell(3 + i, 21).value = a.usuario_atendido; w.getCell(3 + i, 22).value = ultimaObs(a);
     });
     [18, 22, 18, 18, 14, 16, 15, 17, 12, 22, 40, 60, 2, 2, 2, 15, 8, 2, 14, 16, 20, 30].forEach((wd, i) => w.getColumn(i + 1).width = wd);
     w.views = [{ state: 'frozen', ySplit: 1 }];

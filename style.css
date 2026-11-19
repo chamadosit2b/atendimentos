@@ -363,3 +363,7 @@ tr.marcado{background:#eef4ff !important}
 .tag-andamento{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--st-fech-bg);color:var(--st-fech);margin-left:6px;vertical-align:1px}
 
 input:disabled{background:#eef2f7;color:var(--ink-3)}
+
+/* observação antiga (antes de tirar o campo "Observações gerais") */
+.obs-antiga{background:var(--surface-2);border:1px solid var(--line-2);border-radius:8px;padding:8px 12px;margin:0 0 12px;font-size:14px;white-space:pre-wrap}
+.obs-antiga span{display:block;font-size:12px;color:var(--ink-3);font-weight:600;margin-bottom:2px}
