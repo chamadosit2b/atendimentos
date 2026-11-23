@@ -367,3 +367,5 @@ input:disabled{background:#eef2f7;color:var(--ink-3)}
 /* observação antiga (antes de tirar o campo "Observações gerais") */
 .obs-antiga{background:var(--surface-2);border:1px solid var(--line-2);border-radius:8px;padding:8px 12px;margin:0 0 12px;font-size:14px;white-space:pre-wrap}
 .obs-antiga span{display:block;font-size:12px;color:var(--ink-3);font-weight:600;margin-bottom:2px}
+
+.tab-tec th.th-ord{color:var(--brand-2)}

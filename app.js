@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261119';
+import { api } from './firebase.js?v=20261123';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -203,7 +203,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261119';
+const VERSAO = '20261123';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -1077,6 +1077,15 @@ const fmtMin = m => m === null || m === undefined ? '—' : `${Math.floor(m / 60
 // "Tentativa de contato" não conta como chamado atendido no painel
 const contaComoAtendido = a => a.status !== 'TENT CONTATO';
 
+// "Por técnico": quem atendeu mais vem primeiro. Empate: menor tempo médio primeiro
+// (quem não tem nenhum horário preenchido fica depois). Sem atendimentos: ordem alfabética no fim.
+function ordemTecnicos(a, b) {
+  if (b.total !== a.total) return b.total - a.total;
+  const ma = a.min_medio ?? Infinity, mb = b.min_medio ?? Infinity;
+  if (ma !== mb) return ma - mb;
+  return a.nome.localeCompare(b.nome, 'pt-BR');
+}
+const porNome = l => [...l].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 function montarPainel(mes, lista) {
   const ids = new Set(S.usuarios.filter(u => u.ativo).map(u => u.id));
   lista.forEach(a => ids.add(a.uid));
@@ -1087,7 +1096,7 @@ function montarPainel(mes, lista) {
       home: m.filter(a => a.home_local === 'HOME').length, local: m.filter(a => a.home_local === 'LOCAL').length };
     r.total = r.encaminhado + r.agendado + r.fechado + r.devolvido;   // tentativa de contato fica de fora
     tempos(r, m.filter(contaComoAtendido)); temposTent(r, m); return r;
-  }).sort((a, b) => a.nome.localeCompare(b.nome));
+  }).sort(ordemTecnicos);
   const total = { nome: 'TOTAL' };
   for (const k of ['encaminhado', 'tent_contato', 'agendado', 'fechado', 'devolvido', 'reabertos', 'home', 'local', 'total']) total[k] = linhas.reduce((t, r) => t + r[k], 0);
   const atendidos = lista.filter(contaComoAtendido);
@@ -1141,7 +1150,7 @@ async function telaPainel(main) {
     $('#pn').innerHTML = `
       <div class="filtro-tec">
         <label>Técnico:
-          <select id="pTec"><option value="">Todos os técnicos</option>${mesGeral.linhas.map(r => `<option value="${esc(r.uid)}" ${r.uid === uid ? 'selected' : ''}>${esc(r.nome)}${desligado(r.uid) ? ' (desligado)' : ''}</option>`).join('')}</select></label>
+          <select id="pTec"><option value="">Todos os técnicos</option>${porNome(mesGeral.linhas).map(r => `<option value="${esc(r.uid)}" ${r.uid === uid ? 'selected' : ''}>${esc(r.nome)}${desligado(r.uid) ? ' (desligado)' : ''}</option>`).join('')}</select></label>
         <label>Dia:
           <select id="pDia">${opcDias}</select></label>
         ${S.mes === mesAtual() ? '<button type="button" class="btn" id="pHoje">Hoje</button>' : ''}
@@ -1160,11 +1169,11 @@ async function telaPainel(main) {
         <div class="kpi tent" title="Tempo médio de cada tentativa de contato (início até término)"><span>Média por tentativa</span><b>${fmtMin(T.tent_min_medio)}</b><small class="fora">${T.tent_com_tempo ? fmtMin(T.tent_min_total) + ' em tentativas' : 'sem tentativas com horário'}</small></div>
       </div>
       <div class="card"><h3>Por técnico${dia ? ` <span class="muted">· ${fmtData(dia)}</span>` : ''}</h3><div class="tablewrap"><table class="tab-tec">
-          <thead><tr><th>Técnico</th><th class="num">Encaminhado</th><th class="num" title="Não conta no total">Tent. contato*</th><th class="num">Agendado</th><th class="num">Fechado</th><th class="num" title="Idas que o setor devolveu (contam no total)">Devolvido</th><th class="num">Remoto/Home</th><th class="num">Local</th><th class="num">Total geral</th><th class="num" title="Chamados SMAX diferentes. Entre parênteses: idas de chamados reabertos">Chamados</th><th class="num">Horas totais</th><th class="num">Tempo médio</th><th class="num col-tent">Horas em tent.</th><th class="num col-tent">Média por tent.</th></tr></thead>
+          <thead><tr><th>Técnico</th><th class="num">Encaminhado</th><th class="num" title="Não conta no total">Tent. contato*</th><th class="num">Agendado</th><th class="num">Fechado</th><th class="num" title="Idas que o setor devolveu (contam no total)">Devolvido</th><th class="num">Remoto/Home</th><th class="num">Local</th><th class="num th-ord" title="A tabela está em ordem de Total geral (maior primeiro). Empate: menor tempo médio primeiro">Total geral ▼</th><th class="num" title="Chamados SMAX diferentes. Entre parênteses: idas de chamados reabertos">Chamados</th><th class="num">Horas totais</th><th class="num">Tempo médio</th><th class="num col-tent">Horas em tent.</th><th class="num col-tent">Média por tent.</th></tr></thead>
           <tbody>${(uid ? geral.linhas.filter(r => r.uid === uid) : geral.linhas).map(r => linha(r)).join('')}${uid ? '' : linha(geral.total, true)}</tbody></table></div>
           ${uid ? `<div class="pad hint" style="padding-bottom:0">Mostrando só ${esc(sel.nome)}. <a href="#" id="verTodos2">Ver todos os técnicos</a></div>` : ''}
           <div class="pad hint"><b>Chamado devolvido e reaberto</b>: cada ida conta como um atendimento, no dia e para o técnico que atendeu. A coluna <b>Chamados</b> mostra quantos SMAX diferentes foram atendidos (↺ = idas de chamados reabertos).<br><b>Tentativa de contato não conta como chamado atendido</b>: aparece na coluna própria, mas fica fora do total geral, das horas, do tempo médio, dos gráficos e do calendário.<br>${dia ? 'Números do dia ' + fmtData(dia) + '.' : `Média diária = minutos de atendimento ÷ ${p.diasUteis} dias úteis (seg. a sex.) ${p.mes === mesAtual() ? 'até hoje' : 'do mês'}; embaixo, a quantidade de atendimentos por dia.`}
-            Tempo médio = horas de atendimento ÷ atendimentos com início e término preenchidos.</div></div>
+            Tempo médio = horas de atendimento ÷ atendimentos com início e término preenchidos.<br><b>Ordem:</b> quem atendeu mais vem primeiro; no empate, quem tem o menor tempo médio.</div></div>
       <div class="graficos">
           <div class="card"><h3>Atendimento SAJ — encaminhados para${filtros ? ` <span class="muted">· ${filtros.replace(/<\/?b>/g, '')}</span>` : ''}</h3><div class="pad bars">${p.destinos.map(d => `<div class="bar"><span>${esc(d.destino)}</span><div class="t"><i style="width:${d.n / maxD * 100}%"></i></div><b>${d.n}</b></div>`).join('')}</div></div>
           ${p.devolucoes.length ? `<div class="card"><h3>Devoluções por setor${filtros ? ` <span class="muted">· ${filtros.replace(/<\/?b>/g, '')}</span>` : ''}</h3><div class="pad">
@@ -1177,7 +1186,7 @@ async function telaPainel(main) {
       </div>
       <div class="card cal-card">
         <div class="cal-head"><h3>Calendário de ${esc(nomeMes(S.mes))}${uid ? ` <span class="muted">· ${esc(sel.nome)}</span>` : ' <span class="muted">· todos os técnicos</span>'}</h3>
-          <select id="calTec" aria-label="Técnico"><option value="">Todos os técnicos</option>${mesGeral.linhas.map(r => `<option value="${esc(r.uid)}" ${r.uid === uid ? 'selected' : ''}>${esc(r.nome)}${desligado(r.uid) ? ' (desligado)' : ''}</option>`).join('')}</select></div>
+          <select id="calTec" aria-label="Técnico"><option value="">Todos os técnicos</option>${porNome(mesGeral.linhas).map(r => `<option value="${esc(r.uid)}" ${r.uid === uid ? 'selected' : ''}>${esc(r.nome)}${desligado(r.uid) ? ' (desligado)' : ''}</option>`).join('')}</select></div>
         <div class="pad" id="cal"></div>
       </div>
       <div class="card cal-card">
