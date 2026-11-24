@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261123';
+import { api } from './firebase.js?v=20261124';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -144,6 +144,7 @@ function validar(at) {
   if (!at.smax && !at.ticket_softplan) return 'Informe o nº da solicitação SMAX (ou o ticket Softplan).';
   if (!at.comarca) return 'Informe a comarca.';
   if (at.inicio && at.termino && at.termino < at.inicio) return 'O término não pode ser antes do início.';
+  if (at.inicio && at.termino && at.termino === at.inicio) return 'O tempo de atendimento está zerado (0:00): o início e o término estão iguais. Ajuste o horário de início ou de término.';
   return null;
 }
 
@@ -203,7 +204,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261123';
+const VERSAO = '20261124';
 let versaoNova = null;
 async function conferirVersao() {
   try {
