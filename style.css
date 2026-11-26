@@ -374,3 +374,6 @@ input:disabled{background:#eef2f7;color:var(--ink-3)}
 fieldset.devol.assumir{border-color:#0e7490;background:#e6f6f9}
 fieldset.devol.assumir legend{color:#0e7490}
 .setor.passagem-gap{border-left-color:#0e7490;color:#0e7490}
+
+/* agenda da equipe: destaca os meus */
+.ag-meu{font-weight:700;color:var(--brand-2)}

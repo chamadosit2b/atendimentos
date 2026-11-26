@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261126';
+import { api } from './firebase.js?v=20261126b';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -204,7 +204,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261126';
+const VERSAO = '20261126b';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -358,7 +358,7 @@ async function atualizarTela(manual) {
 // no automático, só redesenha o Painel/Agenda se algo mudou (evita a tela piscar à toa)
 async function mudou(tela) {
   try {
-    const l = tela === 'painel' ? await docsDoMes(S.mes) : (await api.listarAgendados({ uid: isAdmin() ? null : S.perfil.id })).filter(foraDaLixeira);
+    const l = tela === 'painel' ? await docsDoMes(S.mes) : (await api.listarAgendados({ uid: null })).filter(foraDaLixeira);
     const ass = assinatura(l), k = 'assin_' + tela, antes = S[k]; S[k] = ass; return antes !== ass;
   } catch { return false; }
 }
@@ -1039,12 +1039,17 @@ function refresh() { if (S.recarregar && rota() === 'atendimentos') S.recarregar
 // --------------------------------------------------------------- Agenda
 async function telaAgenda(main) {
   S.recarregar = null;
-  main.innerHTML = `<div class="head"><div><h2>Agenda</h2><p>Atendimentos com status AGENDADO, em ordem de horário.</p></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${botaoAtu()}<button class="btn primary" id="novo">+ Novo atendimento</button></div></div><div id="lista"><div class="empty">Carregando…</div></div>`;
+  if (S.agendaFiltro === undefined) S.agendaFiltro = '';   // '' = toda a equipe; uid = só de um técnico
+  main.innerHTML = `<div class="head"><div><h2>Agenda</h2><p>Atendimentos com status AGENDADO da equipe, em ordem de horário.</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${botaoAtu()}<button class="btn primary" id="novo">+ Novo atendimento</button></div></div>
+    <div class="toolbar"><select id="agTec" aria-label="Técnico"><option value="">Toda a equipe</option><option value="${esc(S.perfil.id)}" ${S.agendaFiltro === S.perfil.id ? 'selected' : ''}>Só os meus</option>${porNome(S.usuarios.filter(u => u.ativo && u.id !== S.perfil.id)).map(u => `<option value="${esc(u.id)}" ${S.agendaFiltro === u.id ? 'selected' : ''}>${esc(u.nome)}</option>`).join('')}</select></div>
+    <div id="lista"><div class="empty">Carregando…</div></div>`;
   $('#novo').onclick = () => formAtendimento(null);
-  let lista; try { lista = (await api.listarAgendados({ uid: isAdmin() ? null : S.perfil.id })).filter(foraDaLixeira); S.assin_agenda = assinatura(lista); } catch (e) { return toast(e.message, true); }
+  $('#agTec').onchange = e => { S.agendaFiltro = e.target.value; telaAgenda(main); };
+  let lista; try { lista = (await api.listarAgendados({ uid: null })).filter(foraDaLixeira); S.assin_agenda = assinatura(lista); } catch (e) { return toast(e.message, true); }
+  if (S.agendaFiltro) lista = lista.filter(a => a.uid === S.agendaFiltro);
   lista.sort((a, b) => (a.agendamento || '9999').localeCompare(b.agendamento || '9999'));
-  if (!lista.length) { $('#lista').innerHTML = `<div class="card"><div class="empty">Nenhum atendimento agendado no momento.</div></div>`; return; }
+  if (!lista.length) { $('#lista').innerHTML = `<div class="card"><div class="empty">Nenhum atendimento agendado${S.agendaFiltro ? ' para ' + (S.agendaFiltro === S.perfil.id ? 'você' : esc(nomeDe(S.agendaFiltro))) : ''} no momento.</div></div>`; return; }
   const agora = agoraLocal();
   $('#lista').innerHTML = `<div class="agenda">${lista.map(a => {
     const fim = fimAgenda(a), late = !!a.agendamento && fim < agora, andamento = !!a.agendamento && a.agendamento <= agora && agora <= fim;
@@ -1052,7 +1057,7 @@ async function telaAgenda(main) {
     const nReag = idasFechadas(a).filter(x => x.reagendamento).length;
     return `<div class="ag-item ${late ? 'late' : andamento ? 'andamento' : ''}" data-id="${esc(a.id)}">
       <div class="when"><b>${t || '--:--'}</b><small>${d ? fmtData(d) : 'sem horário'}${a.dia_inteiro ? ' · dia inteiro' : ''}${late ? ' · atrasado' : ''}</small></div>
-      <div class="what"><b>SMAX ${esc(a.smax)} · ${esc(a.comarca)}${a.juri ? ' <span class="tag-juri">⚖️ Júri</span>' : ''}${andamento ? ' <span class="tag-andamento">🟢 em andamento</span>' : ''}${nReag ? ` <span class="tag-reag" title="Quantas vezes já foi reagendado">↻ reagendado ${nReag}×</span>` : ''}</b><small>${esc(a.usuario_atendido || 'usuário não informado')}${ultimaObs(a) ? ' — ' + esc(ultimaObs(a)) : ''}${isAdmin() ? ' · ' + esc(nomeDe(a.uid, a.tecnico)) : ''}</small></div>
+      <div class="what"><b>SMAX ${esc(a.smax)} · ${esc(a.comarca)}${a.juri ? ' <span class="tag-juri">⚖️ Júri</span>' : ''}${andamento ? ' <span class="tag-andamento">🟢 em andamento</span>' : ''}${nReag ? ` <span class="tag-reag" title="Quantas vezes já foi reagendado">↻ reagendado ${nReag}×</span>` : ''}</b><small>${esc(a.usuario_atendido || 'usuário não informado')}${ultimaObs(a) ? ' — ' + esc(ultimaObs(a)) : ''}${' · '}<span class="${a.uid === S.perfil.id ? 'ag-meu' : ''}">${a.uid === S.perfil.id ? 'Você' : esc(nomeDe(a.uid, a.tecnico))}</span></small></div>
       <div class="ag-acoes"><button type="button" class="btn sm" data-reag="${esc(a.id)}" title="O usuário não pôde: marcar nova data">↻ Reagendar</button><button type="button" class="btn sm primary" data-atender="${esc(a.id)}" title="Registrar o atendimento">▶ Atender</button></div></div>`;
   }).join('')}</div>`;
   const doc = id => lista.find(a => a.id === id);
