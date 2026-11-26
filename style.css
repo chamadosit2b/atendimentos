@@ -369,3 +369,8 @@ input:disabled{background:#eef2f7;color:var(--ink-3)}
 .obs-antiga span{display:block;font-size:12px;color:var(--ink-3);font-weight:600;margin-bottom:2px}
 
 .tab-tec th.th-ord{color:var(--brand-2)}
+
+/* assumir chamado de um colega */
+fieldset.devol.assumir{border-color:#0e7490;background:#e6f6f9}
+fieldset.devol.assumir legend{color:#0e7490}
+.setor.passagem-gap{border-left-color:#0e7490;color:#0e7490}
