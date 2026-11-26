@@ -1,5 +1,5 @@
 /* Sistema de Atendimentos — Field (site estático + Firebase) */
-import { api } from './firebase.js?v=20261126b';
+import { api } from './firebase.js?v=20261126c';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -69,6 +69,12 @@ function senhaFraca(s) {
   if (s.length < 8) return 'A senha precisa ter pelo menos 8 caracteres.';
   if (!/[A-Za-z]/.test(s) || !/\d/.test(s)) return 'A senha precisa ter letras e números.';
   return null;
+}
+// copia para a área de transferência (com plano B para navegadores antigos)
+async function copiarTexto(t, msg) {
+  try { await navigator.clipboard.writeText(t); }
+  catch { const x = Object.assign(document.createElement('textarea'), { value: t }); x.style.position = 'fixed'; x.style.opacity = '0'; document.body.appendChild(x); x.select(); try { document.execCommand('copy'); } catch {} x.remove(); }
+  toast(msg || 'Copiado.');
 }
 function toast(msg, erro) {
   const t = $('#toast'); t.textContent = msg; t.className = 'show' + (erro ? ' err' : '');
@@ -204,7 +210,7 @@ let iniciado = false;
 // --------------------------------------------------------------- atualização automática
 // Cada versão publicada tem um número. O sistema confere o arquivo versao.json (sem cache)
 // ao abrir, a cada 5 minutos e quando a aba volta a ficar visível. Se mudou, recarrega sozinho.
-const VERSAO = '20261126b';
+const VERSAO = '20261126c';
 let versaoNova = null;
 async function conferirVersao() {
   try {
@@ -658,13 +664,15 @@ async function telaAtendimentos(main) {
       ${admin ? `<th class="col-sel"><input type="checkbox" id="selTodos" title="Marcar todos os chamados da lista (com os filtros atuais)" ${todosMarcados ? 'checked' : ''}></th>` : ''}<th>Solicitação SMAX</th><th>Comarca</th><th>Início</th><th>Término</th><th class="num" title="Soma das idas do chamado">Tempo</th><th>Ticket Softplan</th><th>Status</th><th>Encaminhado p/</th><th>Home/Local</th>${mostraTec ? '<th>Técnico</th>' : ''}</tr></thead>
       <tbody>${lista.map(a => { const fe = idasFechadas(a), ini = fe.length ? fe[0].inicio : a.inicio, tm = minutosChamado(a), nomes = unicos([...fe.map(x => nomeDe(x.uid, x.tecnico)), nomeDe(a.uid, a.tecnico)]);
         return `<tr class="click ${fe.length ? 'com-idas' : ''} ${sel.has(a.id) ? 'marcado' : ''}" data-id="${esc(a.id)}">
-        ${admin ? `<td class="col-sel"><input type="checkbox" data-sel="${esc(a.id)}" ${sel.has(a.id) ? 'checked' : ''} aria-label="Selecionar SMAX ${esc(a.smax)}"></td>` : ''}<td class="mono"><b>${esc(a.smax) || '<span class="muted">—</span>'}</b>${fe.length ? ` <span class="idas" title="Chamado voltou do setor">↺ ${fe.length + 1} idas</span>` : a.ida > 1 ? ` <span class="tag-ida" title="Formato antigo">${ordinal(a.ida)}</span>` : ''}</td>
+        ${admin ? `<td class="col-sel"><input type="checkbox" data-sel="${esc(a.id)}" ${sel.has(a.id) ? 'checked' : ''} aria-label="Selecionar SMAX ${esc(a.smax)}"></td>` : ''}<td class="mono"><b>${esc(a.smax) || '<span class="muted">—</span>'}</b>${a.smax ? `<button type="button" class="btn-copiar" data-copiar="${esc(a.smax)}" title="Copiar o número do SMAX" aria-label="Copiar SMAX ${esc(a.smax)}">📋</button>` : ''}${fe.length ? ` <span class="idas" title="Chamado voltou do setor">↺ ${fe.length + 1} idas</span>` : a.ida > 1 ? ` <span class="tag-ida" title="Formato antigo">${ordinal(a.ida)}</span>` : ''}</td>
         <td>${esc(a.comarca)}</td><td>${fmtDH(ini)}</td><td>${fmtDH(a.termino)}</td>
         <td class="num">${fe.length ? `<b>${fmtHM(tm)}</b>` : duracao(a.inicio, a.termino)}</td><td class="mono">${esc(a.ticket_softplan)}</td>
         <td>${chip(a.status)}</td><td>${a.encaminhado_para ? `<span class="tag">${esc(a.encaminhado_para)}</span>` : ''}</td>
         <td>${esc(a.home_local)}</td>${mostraTec ? `<td>${nomes.map(esc).join(' → ')}${marcaDesligado(a.uid)}</td>` : ''}
       </tr>`; }).join('')}</tbody></table>`;
-    $$('#tab tr[data-id]').forEach(tr => tr.onclick = () => formAtendimento(lista.find(a => a.id === tr.dataset.id)));
+    // clicar na linha abre o chamado, menos quando a pessoa está selecionando um texto para copiar
+    $$('#tab tr[data-id]').forEach(tr => tr.onclick = () => { if (String(getSelection() || '').trim()) return; formAtendimento(lista.find(a => a.id === tr.dataset.id)); });
+    $$('#tab [data-copiar]').forEach(b => b.onclick = e => { e.stopPropagation(); copiarTexto(b.dataset.copiar, `SMAX ${b.dataset.copiar} copiado.`); });
     if (admin) {
       $$('#tab td.col-sel').forEach(td => td.onclick = e => e.stopPropagation());
       $$('#tab input[data-sel]').forEach(cb => cb.onchange = () => { cb.checked ? sel.add(cb.dataset.sel) : sel.delete(cb.dataset.sel); cb.closest('tr').classList.toggle('marcado', cb.checked); $('#selTodos').checked = lista.every(a => sel.has(a.id)); barraSel(lista); });

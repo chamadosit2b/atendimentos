@@ -377,3 +377,10 @@ fieldset.devol.assumir legend{color:#0e7490}
 
 /* agenda da equipe: destaca os meus */
 .ag-meu{font-weight:700;color:var(--brand-2)}
+
+/* botão de copiar o SMAX na lista */
+.btn-copiar{border:0;background:transparent;cursor:pointer;font-size:13px;padding:2px 4px;margin-left:4px;border-radius:6px;opacity:0;transition:opacity .15s,background .15s;vertical-align:1px}
+tr:hover .btn-copiar,.btn-copiar:focus-visible{opacity:.75}
+.btn-copiar:hover{opacity:1;background:var(--brand-soft)}
+@media (hover:none){.btn-copiar{opacity:.6}}
+#tab td.mono{user-select:text}
